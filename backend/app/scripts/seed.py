@@ -71,8 +71,126 @@ async def seed_db() -> None:
         session.add(template)
         await session.flush()
 
-        # 5. Создаём section_contracts
+        # 5. Создаём section_contracts для протокола (MVP набор)
         contracts = [
+            SectionContract(
+                workspace_id=workspace.id,
+                doc_type=DocumentType.PROTOCOL,
+                section_key="protocol.synopsis",
+                title="Synopsis",
+                required_facts_json={},
+                allowed_sources_json={
+                    "doc_types": ["protocol"],
+                    "section_keys": ["protocol.synopsis"],
+                },
+                retrieval_recipe_json={
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["synopsis", "summary"],
+                        "should": ["overview", "brief"],
+                        "not": ["table of contents", "contents"],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Synopsis|Summary)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
+                },
+                qc_ruleset_json={
+                    "required_fields": [],
+                    "validation_rules": [],
+                },
+                citation_policy=CitationPolicy.PER_SENTENCE,
+                version=1,
+                is_active=True,
+            ),
+            SectionContract(
+                workspace_id=workspace.id,
+                doc_type=DocumentType.PROTOCOL,
+                section_key="protocol.objectives",
+                title="Objectives",
+                required_facts_json={
+                    "primary_objective": {"type": "string"},
+                    "secondary_objectives": {"type": "array"},
+                },
+                allowed_sources_json={
+                    "doc_types": ["protocol"],
+                    "section_keys": ["protocol.objectives"],
+                },
+                retrieval_recipe_json={
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["objective", "objectives", "study objectives", "цели исследования"],
+                        "should": ["endpoint", "rationale"],
+                        "not": ["table of contents", "contents"],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Objectives|Study Objectives)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                        "prefer_nearby": ["synopsis", "study design"],
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
+                },
+                qc_ruleset_json={
+                    "required_fields": ["primary_objective"],
+                    "validation_rules": [],
+                },
+                citation_policy=CitationPolicy.PER_SENTENCE,
+                version=1,
+                is_active=True,
+            ),
+            SectionContract(
+                workspace_id=workspace.id,
+                doc_type=DocumentType.PROTOCOL,
+                section_key="protocol.study_design",
+                title="Study Design",
+                required_facts_json={
+                    "design_type": {"type": "string"},
+                    "randomization": {"type": "string"},
+                },
+                allowed_sources_json={
+                    "doc_types": ["protocol"],
+                    "section_keys": ["protocol.study_design"],
+                },
+                retrieval_recipe_json={
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["study design", "design"],
+                        "should": ["methodology", "methods"],
+                        "not": [],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Study Design|Design)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
+                },
+                qc_ruleset_json={
+                    "required_fields": ["design_type"],
+                    "validation_rules": [],
+                },
+                citation_policy=CitationPolicy.PER_SENTENCE,
+                version=1,
+                is_active=True,
+            ),
             SectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
@@ -87,8 +205,23 @@ async def seed_db() -> None:
                     "section_keys": ["protocol.soa"],
                 },
                 retrieval_recipe_json={
-                    "method": "table_extraction",
-                    "filters": {},
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["schedule", "activities", "soa"],
+                        "should": ["visits", "procedures", "таблица"],
+                        "not": [],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Schedule of Activities|SoA|Visits)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
                 },
                 qc_ruleset_json={
                     "required_fields": ["visits", "procedures"],
@@ -101,22 +234,36 @@ async def seed_db() -> None:
             SectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.endpoints",
-                title="Endpoints",
+                section_key="protocol.eligibility.inclusion",
+                title="Inclusion Criteria",
                 required_facts_json={
-                    "primary_endpoint": {"type": "string"},
-                    "secondary_endpoints": {"type": "array"},
+                    "criteria": {"type": "array"},
                 },
                 allowed_sources_json={
                     "doc_types": ["protocol"],
-                    "section_keys": ["protocol.endpoints"],
+                    "section_keys": ["protocol.eligibility.inclusion"],
                 },
                 retrieval_recipe_json={
-                    "method": "section_extraction",
-                    "filters": {},
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["inclusion", "inclusion criteria"],
+                        "should": ["eligibility", "criteria"],
+                        "not": ["exclusion"],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Inclusion Criteria|Inclusion)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
                 },
                 qc_ruleset_json={
-                    "required_fields": ["primary_endpoint"],
+                    "required_fields": ["criteria"],
                     "validation_rules": [],
                 },
                 citation_policy=CitationPolicy.PER_SENTENCE,
@@ -125,23 +272,116 @@ async def seed_db() -> None:
             ),
             SectionContract(
                 workspace_id=workspace.id,
-                doc_type=DocumentType.CSR,
-                section_key="csr.methods.schedule",
-                title="Methods - Schedule",
+                doc_type=DocumentType.PROTOCOL,
+                section_key="protocol.eligibility.exclusion",
+                title="Exclusion Criteria",
                 required_facts_json={
-                    "schedule_description": {"type": "string"},
-                    "visit_schedule": {"type": "array"},
+                    "criteria": {"type": "array"},
                 },
                 allowed_sources_json={
-                    "doc_types": ["protocol", "csr"],
-                    "section_keys": ["protocol.soa", "csr.methods.schedule"],
+                    "doc_types": ["protocol"],
+                    "section_keys": ["protocol.eligibility.exclusion"],
                 },
                 retrieval_recipe_json={
-                    "method": "section_extraction",
-                    "filters": {},
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["exclusion", "exclusion criteria"],
+                        "should": ["eligibility", "criteria"],
+                        "not": ["inclusion"],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Exclusion Criteria|Exclusion)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
                 },
                 qc_ruleset_json={
-                    "required_fields": ["schedule_description"],
+                    "required_fields": ["criteria"],
+                    "validation_rules": [],
+                },
+                citation_policy=CitationPolicy.PER_SENTENCE,
+                version=1,
+                is_active=True,
+            ),
+            SectionContract(
+                workspace_id=workspace.id,
+                doc_type=DocumentType.PROTOCOL,
+                section_key="protocol.treatments.dosing",
+                title="Treatments and Dosing",
+                required_facts_json={
+                    "treatments": {"type": "array"},
+                    "dosing": {"type": "string"},
+                },
+                allowed_sources_json={
+                    "doc_types": ["protocol"],
+                    "section_keys": ["protocol.treatments.dosing"],
+                },
+                retrieval_recipe_json={
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["treatment", "dosing", "dose"],
+                        "should": ["drug", "medication", "therapy"],
+                        "not": [],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Treatment|Dosing|Dose)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
+                },
+                qc_ruleset_json={
+                    "required_fields": ["treatments"],
+                    "validation_rules": [],
+                },
+                citation_policy=CitationPolicy.PER_SENTENCE,
+                version=1,
+                is_active=True,
+            ),
+            SectionContract(
+                workspace_id=workspace.id,
+                doc_type=DocumentType.PROTOCOL,
+                section_key="protocol.safety.ae_reporting",
+                title="Safety - Adverse Event Reporting",
+                required_facts_json={
+                    "ae_reporting": {"type": "string"},
+                },
+                allowed_sources_json={
+                    "doc_types": ["protocol"],
+                    "section_keys": ["protocol.safety.ae_reporting"],
+                },
+                retrieval_recipe_json={
+                    "version": 1,
+                    "heading_match": {
+                        "must": ["adverse event", "ae reporting", "safety"],
+                        "should": ["reporting", "events", "safety"],
+                        "not": [],
+                    },
+                    "regex": {
+                        "heading": ["^(\\d+\\.)?\\s*(Adverse Event|AE Reporting|Safety)\\b"],
+                    },
+                    "scope": {
+                        "doc_zone": "protocol",
+                    },
+                    "capture": {
+                        "strategy": "heading_block",
+                        "max_depth": 3,
+                        "stop_at_same_or_higher_level": True,
+                    },
+                },
+                qc_ruleset_json={
+                    "required_fields": ["ae_reporting"],
                     "validation_rules": [],
                 },
                 citation_policy=CitationPolicy.PER_SENTENCE,

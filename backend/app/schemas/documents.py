@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.db.enums import DocumentLifecycleStatus, DocumentType, IngestionStatus
+from app.db.enums import DocumentLanguage, DocumentLifecycleStatus, DocumentType, IngestionStatus
 
 
 class DocumentCreate(BaseModel):
@@ -37,6 +37,7 @@ class DocumentVersionCreate(BaseModel):
 
     version_label: str
     effective_date: date | None = None
+    document_language: DocumentLanguage = DocumentLanguage.UNKNOWN
 
 
 class DocumentVersionOut(BaseModel):
@@ -50,6 +51,7 @@ class DocumentVersionOut(BaseModel):
     effective_date: date | None
     ingestion_status: IngestionStatus
     ingestion_summary_json: dict[str, Any] | None
+    document_language: DocumentLanguage
     created_by: UUID | None
     created_at: datetime
 

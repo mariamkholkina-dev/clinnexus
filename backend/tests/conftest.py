@@ -51,6 +51,7 @@ def _create_enums_sync(conn):
     _create_enum_if_not_exists(conn, "document_type", "('protocol','sap','tfl','csr','ib','icf','other')")
     _create_enum_if_not_exists(conn, "document_lifecycle_status", "('draft','in_review','approved','superseded')")
     _create_enum_if_not_exists(conn, "ingestion_status", "('uploaded','processing','ready','needs_review','failed')")
+    _create_enum_if_not_exists(conn, "document_language", "('ru','en','mixed','unknown')")
     
     # Anchors / chunks
     _create_enum_if_not_exists(conn, "anchor_content_type", "('p','cell','fn','hdr','li','tbl')")

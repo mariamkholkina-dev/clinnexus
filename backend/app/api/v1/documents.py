@@ -113,6 +113,7 @@ async def create_document_version(
         source_sha256=None,  # Будет обновлено при upload
         effective_date=payload.effective_date,
         ingestion_status=IngestionStatus.UPLOADED,  # Устанавливаем uploaded сразу (допускается по требованиям)
+        document_language=payload.document_language,
     )
     db.add(version)
     await db.commit()
@@ -343,6 +344,18 @@ async def start_ingestion(
             for field in heading_fields:
                 if field in ingestion_result.docx_summary:
                     summary[field] = ingestion_result.docx_summary[field]
+            
+            # Добавляем информацию о маппинге секций
+            if "sections_mapped_count" in ingestion_result.docx_summary:
+                summary["sections_mapped_count"] = ingestion_result.docx_summary["sections_mapped_count"]
+            if "sections_needs_review_count" in ingestion_result.docx_summary:
+                summary["sections_needs_review_count"] = ingestion_result.docx_summary["sections_needs_review_count"]
+            if "mapping_warnings" in ingestion_result.docx_summary:
+                mapping_warnings = ingestion_result.docx_summary["mapping_warnings"]
+                if mapping_warnings:
+                    if "mapping_warnings" not in summary:
+                        summary["mapping_warnings"] = []
+                    summary["mapping_warnings"].extend(mapping_warnings)
             
             # Объединяем warnings (если есть в docx_summary)
             if "warnings" in ingestion_result.docx_summary:

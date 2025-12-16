@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ARRAY, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import ARRAY, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, TypeDecorator
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -17,6 +17,93 @@ from app.db.enums import (
     SectionMapStatus,
 )
 from app.db.models.studies import DocumentTypeType
+
+
+class CitationPolicyType(TypeDecorator):
+    """TypeDecorator для правильной конвертации CitationPolicy enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            CitationPolicy,
+            name="citation_policy",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, CitationPolicy):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return CitationPolicy(value)
+
+
+class SectionMapStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации SectionMapStatus enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            SectionMapStatus,
+            name="section_map_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, SectionMapStatus):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return SectionMapStatus(value)
+
+
+class SectionMapMappedByType(TypeDecorator):
+    """TypeDecorator для правильной конвертации SectionMapMappedBy enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            SectionMapMappedBy,
+            name="section_map_mapped_by",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, SectionMapMappedBy):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return SectionMapMappedBy(value)
 
 
 class SectionContract(Base):
@@ -52,7 +139,7 @@ class SectionContract(Base):
     retrieval_recipe_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     qc_ruleset_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     citation_policy: Mapped[CitationPolicy] = mapped_column(
-        Enum(CitationPolicy, name="citation_policy", native_enum=True),
+        CitationPolicyType(),
         nullable=False,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -94,11 +181,11 @@ class SectionMap(Base):
     )  # массив UUID chunk.id
     confidence: Mapped[float] = mapped_column(nullable=False)
     status: Mapped[SectionMapStatus] = mapped_column(
-        Enum(SectionMapStatus, name="section_map_status", native_enum=True),
+        SectionMapStatusType(),
         nullable=False,
     )
     mapped_by: Mapped[SectionMapMappedBy] = mapped_column(
-        Enum(SectionMapMappedBy, name="section_map_mapped_by", native_enum=True),
+        SectionMapMappedByType(),
         nullable=False,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

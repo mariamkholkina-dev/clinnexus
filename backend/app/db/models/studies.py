@@ -10,6 +10,7 @@ from sqlalchemy.sql import func
 
 from app.db.base import Base
 from app.db.enums import (
+    DocumentLanguage,
     DocumentLifecycleStatus,
     DocumentType,
     IngestionStatus,
@@ -133,6 +134,35 @@ class IngestionStatusType(TypeDecorator):
         return IngestionStatus(value)
 
 
+class DocumentLanguageType(TypeDecorator):
+    """TypeDecorator для правильной конвертации DocumentLanguage enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            DocumentLanguage,
+            name="document_language",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, DocumentLanguage):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return DocumentLanguage(value)
+
+
 class Study(Base):
     __tablename__ = "studies"
 
@@ -214,6 +244,11 @@ class DocumentVersion(Base):
         nullable=False,
     )
     ingestion_summary_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    document_language: Mapped[DocumentLanguage] = mapped_column(
+        DocumentLanguageType(),
+        nullable=False,
+        server_default="unknown",
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

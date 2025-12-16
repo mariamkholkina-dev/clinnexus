@@ -16,6 +16,7 @@ from app.db.models.audit import AuditLog
 from app.db.models.facts import Fact, FactEvidence
 from app.db.models.studies import Document, DocumentVersion
 from app.services.ingestion.docx_ingestor import DocxIngestor
+from app.services.section_mapping import SectionMappingService
 from app.services.soa_extraction import SoAExtractionService
 
 
@@ -305,6 +306,31 @@ class IngestionService:
                 # Если это протокол, возможно стоит поставить needs_review
                 if document.doc_type.value == "protocol":
                     warnings.append("SoA таблица не найдена в протоколе (может потребоваться ручная проверка)")
+            
+            # Шаг 6: Автоматический маппинг секций
+            logger.info(f"Запуск маппинга секций для doc_version_id={doc_version_id}")
+            section_mapping_service = SectionMappingService(self.db)
+            mapping_summary = await section_mapping_service.map_sections(doc_version_id, force=False)
+            
+            # Добавляем предупреждения из маппинга
+            if mapping_summary.mapping_warnings:
+                warnings.extend(mapping_summary.mapping_warnings)
+            
+            # Если есть секции, требующие проверки, ставим needs_review
+            if mapping_summary.sections_needs_review_count > 0:
+                needs_review = True
+            
+            logger.info(
+                f"Маппинг секций завершён: mapped={mapping_summary.sections_mapped_count}, "
+                f"needs_review={mapping_summary.sections_needs_review_count}"
+            )
+            
+            # Сохраняем результаты маппинга в docx_summary для передачи в ingestion_summary_json
+            if docx_summary is None:
+                docx_summary = {}
+            docx_summary["sections_mapped_count"] = mapping_summary.sections_mapped_count
+            docx_summary["sections_needs_review_count"] = mapping_summary.sections_needs_review_count
+            docx_summary["mapping_warnings"] = mapping_summary.mapping_warnings
             
             # Обновляем doc_version.ingestion_summary_json
             # Это поле будет обновлено вызывающим кодом на основе IngestionResult

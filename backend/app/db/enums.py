@@ -46,6 +46,15 @@ class IngestionStatus(str, Enum):
     FAILED = "failed"
 
 
+class DocumentLanguage(str, Enum):
+    """Язык документа."""
+    
+    RU = "ru"
+    EN = "en"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
 class AnchorContentType(str, Enum):
     """Тип контента якоря.
 

@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 from logging.config import fileConfig
 import os
 import sys
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
+# Делаем пакет `app` импортируемым при запуске alembic из корня репозитория
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from app.db.models import Base  # type: ignore[E402]
+from app.db.base import Base  # type: ignore[E402]
+from app.db import models  # noqa: F401  # импортируем все модели для autogenerate
 
 config = context.config
 
@@ -19,7 +23,12 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        compare_type=True,
+    )
 
     with context.begin_transaction():
         context.run_migrations()
@@ -33,7 +42,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

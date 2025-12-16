@@ -4,9 +4,122 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.enums import CitationPolicy, DocumentType, SectionMapMappedBy, SectionMapStatus
+from app.db.enums import (
+    CitationPolicy,
+    DocumentLanguage,
+    DocumentType,
+    SectionMapMappedBy,
+    SectionMapStatus,
+)
+
+
+class RequiredFactSpecMVP(BaseModel):
+    """MVP спецификация одного required fact."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    fact_key: str
+    required: bool = True
+    min_status: str = "extracted"
+    expected_type: str | None = None
+    unit_allowed: list[str] | None = None
+    aliases: list[str] | None = None
+    family: str | None = None
+
+
+class RequiredFactsMVP(BaseModel):
+    """MVP required_facts_json: только список facts[]."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    facts: list[RequiredFactSpecMVP] = Field(default_factory=list)
+
+
+class DependencySourceMVP(BaseModel):
+    """MVP dependency source для allowed_sources_json."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    doc_type: DocumentType
+    section_keys: list[str] = Field(default_factory=list)
+    required: bool = True
+    role: str = "primary"  # primary|supporting
+    precedence: int = 0
+    min_mapping_confidence: float = 0.0
+    allowed_content_types: list[str] = Field(default_factory=list)  # например ["p","cell"]
+
+
+class DocumentScopeMVP(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    same_study_only: bool = True
+    allow_superseded: bool = False
+
+
+class AllowedSourcesMVP(BaseModel):
+    """MVP allowed_sources_json."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    dependency_sources: list[DependencySourceMVP] = Field(default_factory=list)
+    document_scope: DocumentScopeMVP = Field(default_factory=DocumentScopeMVP)
+
+
+class RetrievalLanguageMVP(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    mode: str = "auto"  # auto|ru|en
+
+
+class ContextBuildMVP(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    max_chars: int | None = None
+
+
+class FallbackSearchMVP(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    query_templates: dict[str, list[str]] | None = None  # {"ru": [...], "en": [...]}
+
+
+class SecurityMVP(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    secure_mode_required: bool = True
+
+
+class RetrievalRecipeMVP(BaseModel):
+    """MVP retrieval_recipe_json (Lean)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    language: RetrievalLanguageMVP = Field(default_factory=RetrievalLanguageMVP)
+    context_build: ContextBuildMVP = Field(default_factory=ContextBuildMVP)
+    prefer_content_types: list[str] | None = None
+    fallback_search: FallbackSearchMVP | None = None
+    security: SecurityMVP = Field(default_factory=SecurityMVP)
+
+
+class GatePolicyMVP(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    on_missing_required_fact: str = "blocked"  # blocked|fail|warn
+    on_low_mapping_confidence: str = "blocked"
+    on_citation_missing: str = "fail"
+
+
+class QCRulesetMVP(BaseModel):
+    """MVP qc_ruleset_json."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    phases: list[str] = Field(default_factory=lambda: ["input_qc", "citation_qc"])
+    gate_policy: GatePolicyMVP = Field(default_factory=GatePolicyMVP)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    numbers_match_facts: bool = False
 
 
 class SectionContractCreate(BaseModel):
@@ -16,12 +129,12 @@ class SectionContractCreate(BaseModel):
     doc_type: DocumentType
     section_key: str
     title: str
-    required_facts_json: dict[str, Any]
-    allowed_sources_json: dict[str, Any]
-    retrieval_recipe_json: dict[str, Any]
-    qc_ruleset_json: dict[str, Any]
+    required_facts_json: RequiredFactsMVP = Field(default_factory=RequiredFactsMVP)
+    allowed_sources_json: AllowedSourcesMVP = Field(default_factory=AllowedSourcesMVP)
+    retrieval_recipe_json: RetrievalRecipeMVP = Field(default_factory=RetrievalRecipeMVP)
+    qc_ruleset_json: QCRulesetMVP = Field(default_factory=QCRulesetMVP)
     citation_policy: CitationPolicy
-    version: int = 1
+    version: int = 2
     is_active: bool = True
 
 
@@ -71,3 +184,39 @@ class SectionMapOverrideRequest(BaseModel):
     chunk_ids: list[UUID] | None = None
     notes: str | None = None
 
+
+class SectionMappingAssistRequest(BaseModel):
+    """Схема запроса для LLM-assisted mapping."""
+
+    doc_type: DocumentType
+    section_keys: list[str]
+    max_candidates_per_section: int = 3
+    allow_visual_headings: bool = False
+    apply: bool = False  # Если True, применить изменения в section_maps
+
+
+class CandidateOut(BaseModel):
+    """Кандидат заголовка."""
+
+    heading_anchor_id: str
+    confidence: float
+    rationale: str
+
+
+class SectionQCOut(BaseModel):
+    """QC отчёт для секции."""
+
+    status: str  # "mapped" | "needs_review" | "rejected"
+    selected_heading_anchor_id: str | None
+    errors: list[dict[str, str]]  # [{"type": "...", "message": "..."}]
+
+
+class SectionMappingAssistResponse(BaseModel):
+    """Схема ответа для LLM-assisted mapping."""
+
+    version_id: UUID
+    document_language: DocumentLanguage
+    secure_mode: bool
+    llm_used: bool
+    candidates: dict[str, list[CandidateOut]]
+    qc: dict[str, SectionQCOut]

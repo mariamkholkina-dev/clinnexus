@@ -1,0 +1,55 @@
+{
+  "doc_type": "csr",
+  "section_key": "csr.synopsis",
+  "title": "CSR Synopsis",
+  "version": 2,
+  "is_active": true,
+  "citation_policy": "per_claim",
+  "required_facts_json": { "facts": [] },
+  "allowed_sources_json": {
+    "dependency_sources": [
+      {
+        "doc_type": "csr",
+        "section_keys": ["csr.synopsis"],
+        "required": true,
+        "role": "primary",
+        "precedence": 0,
+        "min_mapping_confidence": 0.5,
+        "allowed_content_types": ["p", "hdr", "li", "tbl"]
+      },
+      {
+        "doc_type": "protocol",
+        "section_keys": ["protocol.synopsis", "protocol.objectives", "protocol.study_design", "protocol.endpoints"],
+        "required": false,
+        "role": "supporting",
+        "precedence": 1,
+        "min_mapping_confidence": 0.4,
+        "allowed_content_types": ["p", "hdr", "li", "tbl"]
+      }
+    ],
+    "document_scope": { "same_study_only": true, "allow_superseded": false }
+  },
+  "retrieval_recipe_json": {
+    "language": { "mode": "auto" },
+    "context_build": { "max_chars": 14000 },
+    "prefer_content_types": ["p", "li"],
+    "fallback_search": {
+      "query_templates": {
+        "ru": ["синопсис", "краткое описание исследования"],
+        "en": ["synopsis", "brief summary"]
+      }
+    },
+    "security": { "secure_mode_required": true }
+  },
+  "qc_ruleset_json": {
+    "phases": ["input_qc", "citation_qc"],
+    "gate_policy": {
+      "on_missing_required_fact": "blocked",
+      "on_low_mapping_confidence": "blocked",
+      "on_citation_missing": "fail"
+    },
+    "numbers_match_facts": false,
+    "warnings": []
+  }
+}
+
