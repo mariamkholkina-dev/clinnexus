@@ -11,6 +11,7 @@ from sqlalchemy.sql import func
 
 from app.db.base import Base
 from app.db.enums import DocumentType, ImpactStatus, RecommendedAction, TaskStatus, TaskType
+from app.db.models.studies import DocumentTypeType
 
 
 class ChangeEvent(Base):
@@ -57,7 +58,7 @@ class ImpactItem(Base):
         nullable=False,
     )
     affected_doc_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, name="document_type", native_enum=True),
+        DocumentTypeType(),
         nullable=False,
     )
     affected_section_key: Mapped[str] = mapped_column(Text, nullable=False)

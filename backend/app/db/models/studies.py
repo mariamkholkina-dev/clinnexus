@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, String, Text, TypeDecorator
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -15,6 +15,122 @@ from app.db.enums import (
     IngestionStatus,
     StudyStatus,
 )
+
+
+class StudyStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации StudyStatus enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            StudyStatus,
+            name="study_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, StudyStatus):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return StudyStatus(value)
+
+
+class DocumentTypeType(TypeDecorator):
+    """TypeDecorator для правильной конвертации DocumentType enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            DocumentType,
+            name="document_type",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, DocumentType):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return DocumentType(value)
+
+
+class DocumentLifecycleStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации DocumentLifecycleStatus enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            DocumentLifecycleStatus,
+            name="document_lifecycle_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, DocumentLifecycleStatus):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return DocumentLifecycleStatus(value)
+
+
+class IngestionStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации IngestionStatus enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            IngestionStatus,
+            name="ingestion_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, IngestionStatus):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return IngestionStatus(value)
 
 
 class Study(Base):
@@ -31,7 +147,7 @@ class Study(Base):
     study_code: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[StudyStatus] = mapped_column(
-        Enum(StudyStatus, name="study_status", native_enum=True),
+        StudyStatusType(),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -60,12 +176,12 @@ class Document(Base):
         nullable=False,
     )
     doc_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, name="document_type", native_enum=True),
+        DocumentTypeType(),
         nullable=False,
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     lifecycle_status: Mapped[DocumentLifecycleStatus] = mapped_column(
-        Enum(DocumentLifecycleStatus, name="document_lifecycle_status", native_enum=True),
+        DocumentLifecycleStatusType(),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -90,11 +206,11 @@ class DocumentVersion(Base):
         nullable=False,
     )
     version_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_file_uri: Mapped[str] = mapped_column(Text, nullable=False)
-    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_file_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     ingestion_status: Mapped[IngestionStatus] = mapped_column(
-        Enum(IngestionStatus, name="ingestion_status", native_enum=True),
+        IngestionStatusType(),
         nullable=False,
     )
     ingestion_summary_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

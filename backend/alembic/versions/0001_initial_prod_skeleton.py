@@ -20,92 +20,77 @@ depends_on = None
 
 
 def _create_enums() -> None:
+    """Создает enum-типы с проверкой существования."""
+    def _create_enum_if_not_exists(enum_name: str, enum_values: str) -> None:
+        op.execute(
+            f"""
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{enum_name}') THEN
+                    CREATE TYPE {enum_name} AS ENUM {enum_values};
+                END IF;
+            END $$;
+            """
+        )
+
     # Multi-tenant / auth
-    op.execute(
-        "CREATE TYPE workspace_role AS ENUM ('admin','writer','clinops','qa')"
-    )
+    _create_enum_if_not_exists("workspace_role", "('admin','writer','clinops','qa')")
 
     # Studies / documents
-    op.execute("CREATE TYPE study_status AS ENUM ('active','archived')")
-    op.execute(
-        "CREATE TYPE document_type AS ENUM "
-        "('protocol','sap','tfl','csr','ib','icf','other')"
+    _create_enum_if_not_exists("study_status", "('active','archived')")
+    _create_enum_if_not_exists(
+        "document_type", "('protocol','sap','tfl','csr','ib','icf','other')"
     )
-    op.execute(
-        "CREATE TYPE document_lifecycle_status AS ENUM "
-        "('draft','in_review','approved','superseded')"
+    _create_enum_if_not_exists(
+        "document_lifecycle_status", "('draft','in_review','approved','superseded')"
     )
-    op.execute(
-        "CREATE TYPE ingestion_status AS ENUM "
-        "('uploaded','processing','ready','needs_review','failed')"
+    _create_enum_if_not_exists(
+        "ingestion_status", "('uploaded','processing','ready','needs_review','failed')"
     )
 
     # Anchors / chunks
-    op.execute(
-        "CREATE TYPE anchor_content_type AS ENUM "
-        "('p','cell','fn','hdr','li','tbl')"
+    _create_enum_if_not_exists(
+        "anchor_content_type", "('p','cell','fn','hdr','li','tbl')"
     )
 
     # Sections
-    op.execute(
-        "CREATE TYPE citation_policy AS ENUM "
-        "('per_sentence','per_claim','none')"
+    _create_enum_if_not_exists(
+        "citation_policy", "('per_sentence','per_claim','none')"
     )
-    op.execute(
-        "CREATE TYPE section_map_status AS ENUM "
-        "('mapped','needs_review','overridden')"
+    _create_enum_if_not_exists(
+        "section_map_status", "('mapped','needs_review','overridden')"
     )
-    op.execute(
-        "CREATE TYPE section_map_mapped_by AS ENUM "
-        "('system','user')"
-    )
+    _create_enum_if_not_exists("section_map_mapped_by", "('system','user')")
 
     # Facts
-    op.execute(
-        "CREATE TYPE fact_status AS ENUM "
-        "('extracted','validated','conflicting','tbd','needs_review')"
+    _create_enum_if_not_exists(
+        "fact_status", "('extracted','validated','conflicting','tbd','needs_review')"
     )
-    op.execute(
-        "CREATE TYPE evidence_role AS ENUM "
-        "('primary','supporting')"
-    )
+    _create_enum_if_not_exists("evidence_role", "('primary','supporting')")
 
     # Conflicts
-    op.execute(
-        "CREATE TYPE conflict_severity AS ENUM "
-        "('low','medium','high','critical')"
+    _create_enum_if_not_exists(
+        "conflict_severity", "('low','medium','high','critical')"
     )
-    op.execute(
-        "CREATE TYPE conflict_status AS ENUM "
-        "('open','investigating','resolved','accepted_risk','suppressed')"
+    _create_enum_if_not_exists(
+        "conflict_status", "('open','investigating','resolved','accepted_risk','suppressed')"
     )
 
     # Generation / QC
-    op.execute(
-        "CREATE TYPE generation_status AS ENUM "
-        "('queued','running','blocked','completed','failed')"
+    _create_enum_if_not_exists(
+        "generation_status", "('queued','running','blocked','completed','failed')"
     )
-    op.execute(
-        "CREATE TYPE qc_status AS ENUM "
-        "('pass','fail','blocked')"
-    )
+    _create_enum_if_not_exists("qc_status", "('pass','fail','blocked')")
 
     # Change / tasks
-    op.execute(
-        "CREATE TYPE recommended_action AS ENUM "
-        "('auto_patch','regenerate_draft','manual_review')"
+    _create_enum_if_not_exists(
+        "recommended_action", "('auto_patch','regenerate_draft','manual_review')"
     )
-    op.execute(
-        "CREATE TYPE impact_status AS ENUM "
-        "('pending','applied','rejected')"
+    _create_enum_if_not_exists("impact_status", "('pending','applied','rejected')")
+    _create_enum_if_not_exists(
+        "task_type", "('review_extraction','resolve_conflict','review_impact','regenerate_section')"
     )
-    op.execute(
-        "CREATE TYPE task_type AS ENUM "
-        "('review_extraction','resolve_conflict','review_impact','regenerate_section')"
-    )
-    op.execute(
-        "CREATE TYPE task_status AS ENUM "
-        "('open','in_progress','done','cancelled')"
+    _create_enum_if_not_exists(
+        "task_status", "('open','in_progress','done','cancelled')"
     )
 
 

@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
+from sqlalchemy import DateTime, ForeignKey, String, Text, TypeDecorator
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM as PG_ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.types import UserDefinedType
@@ -22,6 +22,35 @@ class Vector1536(UserDefinedType):
 
     def get_col_spec(self, **kw: Any) -> str:  # type: ignore[override]
         return "vector(1536)"
+
+
+class AnchorContentTypeType(TypeDecorator):
+    """TypeDecorator для правильной конвертации AnchorContentType enum в значение строки."""
+    
+    impl = PG_ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            AnchorContentType,
+            name="anchor_content_type",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, AnchorContentType):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return AnchorContentType(value)
 
 
 class Anchor(Base):
@@ -53,7 +82,7 @@ class Anchor(Base):
     anchor_id: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
     section_path: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[AnchorContentType] = mapped_column(
-        Enum(AnchorContentType, name="anchor_content_type", native_enum=True),
+        AnchorContentTypeType(),
         nullable=False,
     )
     ordinal: Mapped[int] = mapped_column(nullable=False)

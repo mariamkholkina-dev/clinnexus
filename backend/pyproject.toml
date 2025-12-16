@@ -12,6 +12,7 @@ dependencies = [
     "pydantic[email]>=2.7.0",
     "pydantic-settings>=2.1.0",
     "pgvector>=0.3.0",
+    "python-docx>=1.1.0",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +21,8 @@ dev = [
     "ruff",
     "mypy",
     "pytest",
+    "pytest-asyncio",
+    "aiosqlite",
     "httpx",
 ]
 
@@ -29,4 +32,22 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "asyncio: маркер для асинхронных тестов",
+    "slow: маркер для медленных тестов",
+    "integration: маркер для интеграционных тестов",
+]
 

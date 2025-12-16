@@ -16,6 +16,7 @@ from app.db.enums import (
     SectionMapMappedBy,
     SectionMapStatus,
 )
+from app.db.models.studies import DocumentTypeType
 
 
 class SectionContract(Base):
@@ -41,7 +42,7 @@ class SectionContract(Base):
         nullable=False,
     )
     doc_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, name="document_type", native_enum=True),
+        DocumentTypeType(),
         nullable=False,
     )
     section_key: Mapped[str] = mapped_column(Text, nullable=False)

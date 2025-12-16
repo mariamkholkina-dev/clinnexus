@@ -15,6 +15,7 @@ from app.db.enums import (
     GenerationStatus,
     QCStatus,
 )
+from app.db.models.studies import DocumentTypeType
 
 
 class Template(Base):
@@ -29,7 +30,7 @@ class Template(Base):
         nullable=False,
     )
     doc_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, name="document_type", native_enum=True),
+        DocumentTypeType(),
         nullable=False,
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -67,7 +68,7 @@ class GenerationRun(Base):
         nullable=False,
     )
     target_doc_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, name="document_type", native_enum=True),
+        DocumentTypeType(),
         nullable=False,
     )
     section_key: Mapped[str] = mapped_column(Text, nullable=False)

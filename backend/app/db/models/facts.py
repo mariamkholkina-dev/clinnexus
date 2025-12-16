@@ -4,13 +4,71 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import DateTime, ForeignKey, String, Text, TypeDecorator
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.base import Base
 from app.db.enums import EvidenceRole, FactStatus
+
+
+class FactStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации FactStatus enum в значение строки."""
+
+    impl = PG_ENUM
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(
+            FactStatus,
+            name="fact_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, FactStatus):
+            return value.value
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return FactStatus(value)
+
+
+class EvidenceRoleType(TypeDecorator):
+    """TypeDecorator для правильной конвертации EvidenceRole enum в значение строки."""
+
+    impl = PG_ENUM
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(
+            EvidenceRole,
+            name="evidence_role",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, EvidenceRole):
+            return value.value
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return EvidenceRole(value)
 
 
 class Fact(Base):
@@ -29,7 +87,7 @@ class Fact(Base):
     value_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     unit: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[FactStatus] = mapped_column(
-        Enum(FactStatus, name="fact_status", native_enum=True),
+        FactStatusType(),
         nullable=False,
     )
     created_from_doc_version_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -62,7 +120,7 @@ class FactEvidence(Base):
     # anchor_id ссылается на anchors.anchor_id (строковый идентификатор), а не на anchors.id.
     anchor_id: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_role: Mapped[EvidenceRole] = mapped_column(
-        Enum(EvidenceRole, name="evidence_role", native_enum=True),
+        EvidenceRoleType(),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
