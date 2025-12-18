@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.logging import logger
-from app.core.config import settings
 from app.db.models.generation import GenerationRun, GeneratedSection, Template
 from app.db.models.sections import SectionContract
 from app.db.models.anchors import Anchor
@@ -31,7 +30,10 @@ class GenerationService:
         self.db = db
 
     async def generate_section(
-        self, req: GenerateSectionRequest
+        self,
+        req: GenerateSectionRequest,
+        *,
+        byo_key: str | None = None,
     ) -> GenerateSectionResult:
         """
         Генерирует секцию документа на основе шаблона и источников.
@@ -63,14 +65,15 @@ class GenerationService:
             qc_ruleset_json=contract.qc_ruleset_json,
         )
 
-        # MVP: если контракт требует secure_mode, а он выключен — BLOCKED
-        if passport.retrieval_recipe.security.secure_mode_required and not settings.secure_mode:
+        # MVP: "secure_mode_required" теперь означает "требуется BYO ключ".
+        # Никаких флагов окружения для этого gate не используем.
+        if passport.retrieval_recipe.security.secure_mode_required and not (byo_key or "").strip():
             qc_report = QCReportSchema(
                 status=QCStatus.BLOCKED,
                 errors=[
                     QCErrorSchema(
-                        type="secure_mode_required",
-                        message="SECURE_MODE=false, а контракт требует secure_mode_required=true",
+                        type="byo_key_required",
+                        message="Контракт требует BYO ключ (X-LLM-API-Key) для secure_mode_required=true",
                     )
                 ],
             )
@@ -129,6 +132,9 @@ class GenerationService:
             contract=contract,
             source_doc_version_ids=req.source_doc_version_ids,
         )
+
+        # TODO: Здесь будет инстанцирование LLM-клиента с учётом BYO ключа (byo_key),
+        # без логирования/персистинга ключа и с безопасной конфигурацией провайдера.
 
         # MVP one-shot structured output:
         # В полноценном режиме здесь должен быть LLM, но для MVP-каркаса

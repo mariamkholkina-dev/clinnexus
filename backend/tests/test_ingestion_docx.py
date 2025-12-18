@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import AnchorContentType, DocumentLifecycleStatus, DocumentType, IngestionStatus, StudyStatus
 from app.db.models.anchors import Anchor
 from app.db.models.auth import Workspace
+from app.db.models.facts import Fact, FactEvidence
 from app.db.models.studies import Document, DocumentVersion, Study
 from app.services.ingestion import IngestionService
 
@@ -65,7 +66,8 @@ class TestDocxIngestion:
         """
         Создает тестовый DOCX файл с структурой:
         - Heading 1 "Introduction"
-        - Paragraph "This is paragraph 1."
+        - Paragraph "Protocol Version: 2.0"
+        - Paragraph "Amendment Date: 05 March 2021"
         - Heading 2 "Objectives"
         - List item 1
         - List item 2
@@ -82,7 +84,8 @@ class TestDocxIngestion:
         heading1 = doc.add_paragraph("Introduction", style="Heading 1")
         
         # Paragraph
-        para1 = doc.add_paragraph("This is paragraph 1.")
+        para1 = doc.add_paragraph("Protocol Version: 2.0")
+        para2 = doc.add_paragraph("Amendment Date: 05 March 2021")
         
         # Heading 2
         heading2 = doc.add_paragraph("Objectives", style="Heading 2")
@@ -169,7 +172,7 @@ class TestDocxIngestion:
         
         # Должен быть параграф (p)
         assert AnchorContentType.P in anchors_by_type
-        assert anchors_by_type[AnchorContentType.P] >= 1  # "This is paragraph 1."
+        assert anchors_by_type[AnchorContentType.P] >= 2  # Protocol Version + Amendment Date
         
         # Должны быть элементы списка (li)
         assert AnchorContentType.LI in anchors_by_type
@@ -277,6 +280,27 @@ class TestDocxIngestion:
         assert "sections" in summary
         assert isinstance(summary["sections"], list)
         assert len(summary["sections"]) == summary["num_sections"]
+
+        # Проверяем, что facts extraction тоже записан в summary
+        assert "facts_extraction" in summary
+        assert "facts_count" in summary["facts_extraction"]
+        assert "needs_review" in summary["facts_extraction"]
+
+        # Проверяем, что после ingest в БД есть protocol_meta факты и evidence с реальными anchor_id
+        facts_stmt = select(Fact).where(Fact.created_from_doc_version_id == test_version_with_docx.id)
+        facts = (await db.execute(facts_stmt)).scalars().all()
+        assert any((f.fact_type, f.fact_key) == ("protocol_meta", "protocol_version") for f in facts)
+
+        # evidence (если есть) не должен содержать "anchor_1" и должен ссылаться на anchors текущей версии
+        anchors_stmt = select(Anchor.anchor_id).where(Anchor.doc_version_id == test_version_with_docx.id)
+        anchor_ids = {row[0] for row in (await db.execute(anchors_stmt)).all()}
+
+        if facts:
+            fact_ids = [f.id for f in facts]
+            ev_stmt = select(FactEvidence).where(FactEvidence.fact_id.in_(fact_ids))
+            evidence = (await db.execute(ev_stmt)).scalars().all()
+            assert all(e.anchor_id != "anchor_1" for e in evidence)
+            assert all(e.anchor_id in anchor_ids for e in evidence)
     
     @pytest.mark.asyncio
     async def test_docx_ingestion_re_ingest(

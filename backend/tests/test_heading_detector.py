@@ -360,4 +360,189 @@ class TestHeadingDetector:
         
         # Удаляем временный файл
         tmp_path.unlink()
+    
+    def test_numbering_rejects_sentences_ending_with_period(self):
+        """Тест, что предложения, заканчивающиеся точкой, отклоняются."""
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path = Path(tmp_file.name)
+        tmp_file.close()
+        
+        doc = DocxDocument()
+        
+        # Предложение, заканчивающееся точкой - должно быть отклонено
+        para1 = doc.add_paragraph("2 года. Не применять по истечения срока годности.", style="Normal")
+        
+        # Заголовок без точки - должен быть принят
+        para2 = doc.add_paragraph("3.2 Задачи исследования", style="Normal")
+        
+        doc.save(str(tmp_path))
+        
+        doc_loaded = DocxDocument(str(tmp_path))
+        detector = HeadingDetector(enable_visual_fallback=False)
+        
+        # Предложение с точкой должно быть отклонено
+        hit1 = detector.detect(doc_loaded.paragraphs[0])
+        assert hit1.is_heading is False or hit1.mode != "numbering"
+        
+        # Заголовок без точки должен быть принят
+        hit2 = detector.detect(doc_loaded.paragraphs[1])
+        assert hit2.is_heading is True
+        assert hit2.mode == "numbering"
+        assert hit2.level == 2
+        
+        tmp_path.unlink()
+    
+    def test_numbering_rejects_multiple_sentences(self):
+        """Тест, что текст с несколькими предложениями отклоняется."""
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path = Path(tmp_file.name)
+        tmp_file.close()
+        
+        doc = DocxDocument()
+        
+        # Текст с несколькими предложениями - должен быть отклонён
+        para1 = doc.add_paragraph("5. Неизвестно (если ...). Это второе предложение.", style="Normal")
+        
+        doc.save(str(tmp_path))
+        
+        doc_loaded = DocxDocument(str(tmp_path))
+        detector = HeadingDetector(enable_visual_fallback=False)
+        
+        hit1 = detector.detect(doc_loaded.paragraphs[0])
+        assert hit1.is_heading is False or hit1.mode != "numbering"
+        
+        tmp_path.unlink()
+    
+    def test_numbering_requires_uppercase_after_number(self):
+        """Тест, что после номера требуется заглавная буква."""
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path = Path(tmp_file.name)
+        tmp_file.close()
+        
+        doc = DocxDocument()
+        
+        # После номера строчная буква - должно быть отклонено
+        para1 = doc.add_paragraph("2 года. Не применять...", style="Normal")
+        
+        # После номера заглавная буква (кириллица) - должно быть принято
+        para2 = doc.add_paragraph("3.2 Задачи исследования", style="Normal")
+        
+        # После номера заглавная буква (латиница) - должно быть принято
+        para3 = doc.add_paragraph("1.2 Study Objectives", style="Normal")
+        
+        doc.save(str(tmp_path))
+        
+        doc_loaded = DocxDocument(str(tmp_path))
+        detector = HeadingDetector(enable_visual_fallback=False)
+        
+        # Строчная буква после номера - отклонено
+        hit1 = detector.detect(doc_loaded.paragraphs[0])
+        assert hit1.is_heading is False or hit1.mode != "numbering"
+        
+        # Заглавная кириллица - принято
+        hit2 = detector.detect(doc_loaded.paragraphs[1])
+        assert hit2.is_heading is True
+        assert hit2.mode == "numbering"
+        
+        # Заглавная латиница - принято
+        hit3 = detector.detect(doc_loaded.paragraphs[2])
+        assert hit3.is_heading is True
+        assert hit3.mode == "numbering"
+        
+        tmp_path.unlink()
+    
+    def test_numbering_level1_requires_additional_signals(self):
+        """Тест, что уровень 1 требует дополнительные сигналы заголовка."""
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path = Path(tmp_file.name)
+        tmp_file.close()
+        
+        doc = DocxDocument()
+        
+        # Уровень 1 без дополнительных сигналов - должно быть отклонено
+        para1 = doc.add_paragraph("1) Introduction", style="Normal")
+        
+        # Уровень 1 с ALL CAPS - должно быть принято
+        para2 = doc.add_paragraph("1) INTRODUCTION", style="Normal")
+        
+        # Уровень 1 с bold - должно быть принято
+        para3 = doc.add_paragraph("1) Background", style="Normal")
+        for run in para3.runs:
+            run.bold = True
+        
+        # Уровень 1 с центрированием - должно быть принято
+        para4 = doc.add_paragraph("1) Methods", style="Normal")
+        para4.alignment = 1  # CENTER
+        
+        doc.save(str(tmp_path))
+        
+        doc_loaded = DocxDocument(str(tmp_path))
+        
+        # Вычисляем статистику для проверки размера шрифта
+        doc_stats = HeadingDetector.compute_doc_stats(list(doc_loaded.paragraphs))
+        detector = HeadingDetector(enable_visual_fallback=False)
+        detector.set_doc_stats(doc_stats)
+        
+        # Без сигналов - отклонено
+        hit1 = detector.detect(doc_loaded.paragraphs[0])
+        assert hit1.is_heading is False or hit1.mode != "numbering"
+        
+        # ALL CAPS - принято
+        hit2 = detector.detect(doc_loaded.paragraphs[1])
+        assert hit2.is_heading is True
+        assert hit2.mode == "numbering"
+        assert hit2.level == 1
+        
+        # Bold - принято
+        hit3 = detector.detect(doc_loaded.paragraphs[2])
+        assert hit3.is_heading is True
+        assert hit3.mode == "numbering"
+        assert hit3.level == 1
+        
+        # Centered - принято
+        hit4 = detector.detect(doc_loaded.paragraphs[3])
+        assert hit4.is_heading is True
+        assert hit4.mode == "numbering"
+        assert hit4.level == 1
+        
+        tmp_path.unlink()
+    
+    def test_numbering_rejects_too_long_text(self):
+        """Тест, что слишком длинный текст отклоняется."""
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path = Path(tmp_file.name)
+        tmp_file.close()
+        
+        doc = DocxDocument()
+        
+        # Текст длиннее 120 символов - должно быть отклонено
+        long_text = "1.2 " + "A" * 130
+        para1 = doc.add_paragraph(long_text, style="Normal")
+        
+        # Текст с более чем 14 словами - должно быть отклонено
+        many_words = "1.2 " + " ".join(["Word"] * 20)
+        para2 = doc.add_paragraph(many_words, style="Normal")
+        
+        # Нормальный заголовок - должен быть принят
+        para3 = doc.add_paragraph("1.2 Study Objectives", style="Normal")
+        
+        doc.save(str(tmp_path))
+        
+        doc_loaded = DocxDocument(str(tmp_path))
+        detector = HeadingDetector(enable_visual_fallback=False)
+        
+        # Слишком длинный - отклонено
+        hit1 = detector.detect(doc_loaded.paragraphs[0])
+        assert hit1.is_heading is False or hit1.mode != "numbering"
+        
+        # Слишком много слов - отклонено
+        hit2 = detector.detect(doc_loaded.paragraphs[1])
+        assert hit2.is_heading is False or hit2.mode != "numbering"
+        
+        # Нормальный - принят
+        hit3 = detector.detect(doc_loaded.paragraphs[2])
+        assert hit3.is_heading is True
+        assert hit3.mode == "numbering"
+        
+        tmp_path.unlink()
 

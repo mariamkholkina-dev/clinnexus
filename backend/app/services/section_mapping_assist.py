@@ -158,6 +158,17 @@ class SectionMappingAssistService:
             "contracts": contracts_payload,
         }
 
+        logger.debug(
+            "[Assist] LLM payload подготовлен "
+            f"(request_id={request_id}, doc_version_id={doc_version_id}, "
+            f"sections={len(section_keys)}, headings={len(headings_payload)})"
+        )
+        if logger.isEnabledFor(10):  # DEBUG
+            logger.debug(
+                "[Assist] sections=" + ", ".join(section_keys)
+                + f"; doc_language={doc_version.document_language.value}"
+            )
+
         try:
             llm_response = await llm_client.generate_candidates(
                 system_prompt=system_prompt,
@@ -179,6 +190,10 @@ class SectionMappingAssistService:
         for section_key in section_keys:
             contract = contracts[section_key]
             llm_candidates = llm_response.candidates.get(section_key, [])
+            logger.debug(
+                f"[Assist] section_key={section_key} получено кандидатов от LLM={len(llm_candidates)} "
+                f"(request_id={request_id})"
+            )
 
             # Валидируем, что все heading_anchor_id существуют
             valid_candidates = []
@@ -191,6 +206,11 @@ class SectionMappingAssistService:
                         f"[Assist] LLM предложил несуществующий anchor_id: "
                         f"{candidate.heading_anchor_id} для {section_key}"
                     )
+            if logger.isEnabledFor(10):  # DEBUG
+                logger.debug(
+                    f"[Assist] section_key={section_key} валидных кандидатов={len(valid_candidates)} "
+                    f"(max_candidates_per_section={max_candidates_per_section})"
+                )
 
             candidates_dict[section_key] = [
                 {
@@ -204,6 +224,11 @@ class SectionMappingAssistService:
             # Прогоняем QC Gate для каждого кандидата (сверху вниз)
             selected_result: QCResult | None = None
             for candidate in valid_candidates[:max_candidates_per_section]:
+                logger.debug(
+                    "[Assist] QC validate_candidate "
+                    f"(section_key={section_key}, heading_anchor_id={candidate.heading_anchor_id}, "
+                    f"confidence={candidate.confidence:.2f}, request_id={request_id})"
+                )
                 qc_result = await self.qc_gate.validate_candidate(
                     doc_version_id=doc_version_id,
                     section_key=section_key,
@@ -213,6 +238,11 @@ class SectionMappingAssistService:
                     outline=outline,
                     existing_maps=existing_maps,
                     document_language=doc_version.document_language,
+                )
+                logger.debug(
+                    "[Assist] QC result "
+                    f"(section_key={section_key}, heading_anchor_id={candidate.heading_anchor_id}, "
+                    f"status={qc_result.status}, errors={len(qc_result.errors)})"
                 )
 
                 # Выбираем первый прошедший mapped или needs_review
@@ -236,6 +266,11 @@ class SectionMappingAssistService:
 
             # Формируем QC отчёт
             if selected_result:
+                logger.debug(
+                    "[Assist] selected кандидат "
+                    f"(section_key={section_key}, status={selected_result.status}, "
+                    f"heading_anchor_id={selected_result.selected_heading_anchor_id})"
+                )
                 qc_reports[section_key] = SectionQCReport(
                     status=selected_result.status,
                     selected_heading_anchor_id=selected_result.selected_heading_anchor_id,
@@ -252,6 +287,10 @@ class SectionMappingAssistService:
 
         # 10. Если apply=true, обновляем section_maps
         if apply:
+            logger.info(
+                f"[Assist] apply=true: применяем section_maps (doc_version_id={doc_version_id}, "
+                f"sections={len(section_keys)}, request_id={request_id})"
+            )
             await self._apply_mappings(
                 doc_version_id=doc_version_id,
                 qc_reports=qc_reports,
@@ -260,6 +299,10 @@ class SectionMappingAssistService:
                 outline=outline,
                 existing_maps=existing_maps,
                 request_id=request_id,
+            )
+        else:
+            logger.info(
+                f"[Assist] apply=false: изменения не применяются (doc_version_id={doc_version_id}, request_id={request_id})"
             )
 
         return AssistResult(

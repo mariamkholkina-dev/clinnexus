@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from typing import Any
 
@@ -94,16 +95,28 @@ class LLMClient:
             httpx.HTTPError: При ошибках HTTP
         """
         request_id = request_id or str(uuid.uuid4())
+        # Максимально подробные логи (без утечки секретов):
+        # - логируем провайдера/модель/таймаут/температуру
+        # - размеры промптов и полезные превью (с ограничением длины)
         logger.info(
             f"[LLM] Запрос кандидатов (request_id={request_id}, provider={self.provider.value}, "
-            f"model={self.model})"
+            f"model={self.model}, temperature={self.temperature}, timeout_sec={self.timeout_sec})"
         )
 
         # Формируем сообщения
+        user_prompt_json = json.dumps(user_prompt, ensure_ascii=False, indent=2)
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False, indent=2)},
+            {"role": "user", "content": user_prompt_json},
         ]
+        if logger.isEnabledFor(10):  # DEBUG
+            sys_preview = (system_prompt or "")[:800].replace("\n", "\\n")
+            user_preview = (user_prompt_json or "")[:800].replace("\n", "\\n")
+            logger.debug(
+                f"[LLM] request_id={request_id} system_prompt_len={len(system_prompt or '')} "
+                f"user_prompt_len={len(user_prompt_json)} "
+                f"system_preview[:800]={sys_preview!r} user_preview[:800]={user_preview!r}"
+            )
 
         # Вызываем LLM в зависимости от провайдера
         if self.provider == LLMProvider.AZURE_OPENAI:
@@ -162,6 +175,13 @@ class LLMClient:
 
             # Валидируем через Pydantic
             validated = LLMCandidatesResponse.model_validate(response_json)
+            if logger.isEnabledFor(10):  # DEBUG
+                # Логи “сколько и что вернулось”, без полного ответа
+                per_section = {k: len(v) for k, v in validated.candidates.items()}
+                logger.debug(
+                    f"[LLM] request_id={request_id} candidates_sections={len(validated.candidates)} "
+                    f"candidates_counts={per_section}"
+                )
             logger.info(
                 f"[LLM] Успешно получены кандидаты (request_id={request_id}, "
                 f"sections={len(validated.candidates)})"
@@ -188,9 +208,18 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()
+            start = time.perf_counter()
+            try:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                return response.json()
+            except httpx.ReadTimeout as e:
+                elapsed = time.perf_counter() - start
+                logger.error(
+                    f"[LLM] ReadTimeout (request_id={request_id}, url={url!r}, timeout_sec={self.timeout_sec}, "
+                    f"elapsed={elapsed})"
+                )
+                raise
 
     async def _call_openai_compatible(
         self, messages: list[dict[str, str]], request_id: str
@@ -209,9 +238,18 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()
+            start = time.perf_counter()
+            try:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                return response.json()
+            except httpx.ReadTimeout:
+                elapsed = time.perf_counter() - start
+                logger.error(
+                    f"[LLM] ReadTimeout (request_id={request_id}, url={url!r}, timeout_sec={self.timeout_sec}, "
+                    f"elapsed={elapsed})"
+                )
+                raise
 
     async def _call_local(
         self, messages: list[dict[str, str]], request_id: str

@@ -74,6 +74,8 @@
   - Файлы: `backend/app/db/enums.py` (`DocumentType`), `backend/alembic/versions/0001_initial_prod_skeleton.py`
 - `citation_policy`: `per_sentence|per_claim|none`  
   - Файлы: `backend/app/db/enums.py` (`CitationPolicy`), `backend/alembic/versions/0001_initial_prod_skeleton.py`, ORM: `backend/app/db/models/sections.py`
+- `document_language`: `ru|en|mixed|unknown`  
+  - Файлы: `backend/app/db/enums.py` (`DocumentLanguage`), `backend/alembic/versions/0004_add_document_language.py`, ORM: `backend/app/db/models/studies.py` (поле `document_versions.document_language`)
 
 **Таблицы (по ORM; полный DDL — миграция 0001):**
 - `workspaces(id, name, created_at)` — `backend/app/db/models/auth.py`
@@ -87,7 +89,7 @@
 - `section_contracts(id, workspace_id, doc_type, section_key, title, required_facts_json, allowed_sources_json, retrieval_recipe_json, qc_ruleset_json, citation_policy, version, is_active, created_at)` + uq(workspace_id,doc_type,section_key,version) — `backend/app/db/models/sections.py`
 - `section_maps(id, doc_version_id, section_key, anchor_ids[], chunk_ids[], confidence, status, mapped_by, notes, created_at)` — `backend/app/db/models/sections.py`
 - `facts(id, study_id, fact_type, fact_key, value_json, unit, status, created_from_doc_version_id, created_at, updated_at)` + uq(study_id,fact_type,fact_key) — `backend/app/db/models/facts.py`
-- `fact_evidence(id, fact_id, anchor_id, evidence_role, created_at)` — `backend/app/db/models/facts.py`
+- `fact_evidence(id, fact_id, anchor_id, evidence_role, created_at)` + uq(fact_id,anchor_id,evidence_role) — `backend/app/db/models/facts.py`, уникальный индекс: `backend/alembic/versions/0005_unique_fact_evidence.py`
 - `templates(id, workspace_id, doc_type, name, template_body, version, created_at)` — `backend/app/db/models/generation.py`
 - `model_configs(id, provider, model_name, prompt_version, params_json, created_at)` — `backend/app/db/models/generation.py`
 - `generation_runs(id, study_id, target_doc_type, section_key, template_id, contract_id, input_snapshot_json, model_config_id, status, created_by, created_at)` — `backend/app/db/models/generation.py`
@@ -111,7 +113,7 @@
   - парсит DOCX через `DocxIngestor.ingest(...)` → создаёт `anchors` (bulk insert),
   - запускает `SoAExtractionService.extract_soa(...)` → создаёт cell anchors + факты `soa.*`,
   - запускает `SectionMappingService.map_sections(...)` → создаёт/обновляет `section_maps`,
-  - собирает warnings/needs_review и summary для `ingestion_summary_json`.  
+  - собирает warnings/needs_review и summary для `ingestion_summary_json` (стабильная схема ключей + всегда заполняется даже при ошибках).  
   - Файл: `backend/app/services/ingestion/__init__.py`
 
 **Формирование `anchor_id` (реальная реализация в DOCX ingestion):**
@@ -157,9 +159,25 @@
 - Реализован детектор таблицы SoA по скорингу (keywords + структура + маркеры X/✓ + штрафы), извлечение visits/procedures/matrix, создание cell anchors + запись в facts (`fact_type="soa"`, keys: `visits|procedures|matrix`) + evidence.  
   - Файлы: `backend/app/services/soa_extraction.py`, использование: `backend/app/services/ingestion/__init__.py`, чтение API: `backend/app/api/v1/documents.py`
 
+### 8) Закрытие MVP шагов 1–6 (sweep)
+
+- **Step 1/2 (модели/миграции/enums)**: Alembic `env.py` импортирует `app.db.models`, enum `anchor_content_type` включает `cell`, `IngestionStatus` соответствует state machine.
+- **Step 3 (lifecycle + summary)**: `ingestion_summary_json` теперь всегда заполняется и имеет стабильную схему ключей `{anchors_created, soa_found, soa_facts_written, chunks_created, mapping_status, warnings, errors}` (доп. поля могут присутствовать).
+- **Step 4 (DOCX anchors)**: anchors создаются для `hdr/p/li`, добавлена попытка извлечения `fn` (с graceful skip + warning при недоступности).
+- **Step 5 (SoA + evidence)**: cell anchors включают `location_json.table_id/row_idx/col_idx/header_path`, расширены RU/EN ключевые слова детектора; тесты проверяют, что evidence ссылается на реальные `cell` anchors.
+- **Step 5.5 (Rules-first fact extraction)**: реализовано извлечение фактов `protocol_version`, `amendment_date`, `planned_n_total` с поддержкой RU/EN паттернов; интегрировано в ingest пайплайн; evidence идемпотентно заменяется при повторных прогонах.
+- **Миграция 0004 (document_language)**: добавлен enum `document_language` (`ru|en|mixed|unknown`) и поле в `document_versions`; автодетект языка при upload DOCX (если `document_language=UNKNOWN`).
+- **Миграция 0005 (unique fact_evidence)**: добавлен уникальный индекс `(fact_id, anchor_id, evidence_role)` для предотвращения дубликатов evidence при повторных прогонах.
+
 **Facts (кроме SoA):**
-- Общий `FactExtractionService.extract_and_upsert(...)` сейчас **заглушка** (создаёт “sample” fact и evidence с фиктивным `anchor_id="anchor_1"`). В ingest пайплайн этот сервис сейчас не вызывается (в коде ingest шаги: docx anchors → SoA → section mapping).  
-  - Файлы: `backend/app/services/fact_extraction.py`, `backend/app/services/ingestion/__init__.py`
+- `FactExtractionService.extract_and_upsert(...)` реализован как **rules-first** извлечение (без LLM):
+  - Извлекает 3 типа фактов: `protocol_meta/protocol_version`, `protocol_meta/amendment_date`, `population/planned_n_total`
+  - Поддерживает RU/EN паттерны (regex-based)
+  - Создаёт факты со статусом `extracted` или `needs_review` (если не найдено)
+  - Evidence ссылается только на реальные `anchor_id` (не фиктивные)
+  - Идемпотентность: при повторном прогоне заменяет evidence для существующих фактов
+  - Интегрирован в ingest пайплайн (вызывается после SoA extraction, перед section mapping)
+  - Файлы: `backend/app/services/fact_extraction.py`, `backend/app/services/ingestion/__init__.py` (строка 336-345)
 
 **Generation:**
 - `GenerationService.generate_section(...)` реализован как MVP-каркас:
@@ -183,16 +201,22 @@
 - `RetrievalService.retrieve(...)` сейчас **заглушка** (возвращает `[]`), несмотря на наличие `chunks.embedding vector(1536)` и индексов.  
   - Файлы: `backend/app/services/retrieval.py`, индексы: `backend/alembic/versions/0002_enums_and_vector.py`
 
+**Impact (change management):**
+- `ImpactService.compute_impact(...)` сейчас **заглушка** (возвращает `[]`), несмотря на наличие таблиц `change_events` и `impact_items`.  
+  - Файлы: `backend/app/services/impact.py`
+
 ### 7) TODO (ближайшие 3 шага)
 
 1) **Починить Step 6.5 smoke-check без ослабления MVP-ограничений**:
-   - Вариант A: перед запуском smoke-check поднимать сидер `seed_section_contracts.py` (и убрать POST в smoke-check), либо добавить отдельный “test-only” эндпоинт/флаг для создания контрактов в dev.  
+   - Вариант A: перед запуском smoke-check поднимать сидер `seed_section_contracts.py` (и убрать POST в smoke-check), либо добавить отдельный "test-only" эндпоинт/флаг для создания контрактов в dev.  
    - Файлы: `scripts/check_step6_5_llm_assist.py`, `backend/app/scripts/seed_section_contracts.py`, `backend/app/core/config.py`, `backend/app/api/v1/sections.py`
 2) **Включить/настроить LLM assist и стабилизировать контрактные ожидания**:
    - Настроить `SECURE_MODE=true`, `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`; убедиться, что `SectionContract.retrieval_recipe_json` v2 соответствует документному языку (RU/EN/MIXED).  
    - Файлы: `backend/app/core/config.py`, `backend/app/services/section_mapping_assist.py`, `backend/app/services/llm_client.py`, `contracts/seed/*.json`
-3) **Довести extraction/retrieval до рабочего контура**:
-   - Реализовать `RetrievalService` (embed query + pgvector search), затем переключить generation на retrieval вместо чистого `section_maps`/anchors; заменить заглушку `FactExtractionService` на реальный пайплайн фактов по контрактам.  
-   - Файлы: `backend/app/services/retrieval.py`, `backend/app/services/generation.py`, `backend/app/services/fact_extraction.py`, `backend/app/services/lean_passport.py`
+3) **Довести retrieval/impact до рабочего контура**:
+   - Реализовать `RetrievalService` (embed query + pgvector search), затем переключить generation на retrieval вместо чистого `section_maps`/anchors.  
+   - Реализовать `ImpactService.compute_impact(...)` для вычисления воздействия изменений документов на основе diff и dependency graph.  
+   - Расширить `FactExtractionService` для извлечения дополнительных фактов по контрактам (сейчас только 3 базовых: protocol_version, amendment_date, planned_n_total).  
+   - Файлы: `backend/app/services/retrieval.py`, `backend/app/services/impact.py`, `backend/app/services/generation.py`, `backend/app/services/fact_extraction.py`, `backend/app/services/lean_passport.py`
 
 

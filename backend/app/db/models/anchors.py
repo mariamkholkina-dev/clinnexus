@@ -23,6 +23,42 @@ class Vector1536(UserDefinedType):
     def get_col_spec(self, **kw: Any) -> str:  # type: ignore[override]
         return "vector(1536)"
 
+    def bind_processor(self, dialect):  # type: ignore[override]
+        """
+        asyncpg/pgvector ожидает литерал вида "[0.1,0.2,...]".
+
+        Важно: `chunks.embedding` = vector(1536) NOT NULL, поэтому здесь также
+        валидируем длину.
+        """
+
+        def process(value):
+            if value is None:
+                return None
+            if not isinstance(value, (list, tuple)):
+                raise TypeError(f"Vector1536 ожидает list[float], получено: {type(value)!r}")
+            if len(value) != 1536:
+                raise ValueError(f"Vector1536 ожидает длину 1536, получено: {len(value)}")
+
+            # Формируем pgvector literal: "[0.001234,0.000000,...]"
+            # Используем фиксированную точность для стабильности и компактности.
+            parts = []
+            for x in value:
+                try:
+                    fx = float(x)
+                except Exception as e:  # noqa: BLE001
+                    raise TypeError(f"Vector1536: элемент не float: {x!r}") from e
+                parts.append(f"{fx:.6f}")
+            return "[" + ",".join(parts) + "]"
+
+        return process
+
+    def result_processor(self, dialect, coltype):  # type: ignore[override]
+        # Для MVP достаточно вернуть строку/сырое значение; чтение embedding не требуется.
+        def process(value):
+            return value
+
+        return process
+
 
 class AnchorContentTypeType(TypeDecorator):
     """TypeDecorator для правильной конвертации AnchorContentType enum в значение строки."""

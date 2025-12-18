@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
-    log_level: str = "info"
+    # Уровень логирования приложения.
+    # По умолчанию в dev включаем DEBUG, чтобы видеть полный трейс пайплайна.
+    # В prod можно переопределить через LOG_LEVEL=info|warning|error.
+    log_level: str = "DEBUG"
 
     db_host: str = "db"
     db_port: int = 5432
@@ -53,6 +56,11 @@ class Settings(BaseSettings):
     # MVP: UI/HTTP редактирование section_contracts запрещено по умолчанию.
     # Паспорта должны загружаться сидером из репозитория.
     enable_contract_editing: bool = False
+
+    # Диагностические логи маппинга секций (SectionMappingService).
+    # Если True, дополнительно логируем top-3 кандидата заголовков и детали скоринга.
+    # Включается через env var: MAPPING_DEBUG_LOGS=1
+    mapping_debug_logs: bool = False
 
     @property
     def sync_database_url(self) -> str:

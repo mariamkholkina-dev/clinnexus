@@ -16,6 +16,8 @@ from app.db.models.audit import AuditLog
 from app.db.models.facts import Fact, FactEvidence
 from app.db.models.studies import Document, DocumentVersion
 from app.services.ingestion.docx_ingestor import DocxIngestor
+from app.services.fact_extraction import FactExtractionService
+from app.services.chunking import ChunkingService
 from app.services.section_mapping import SectionMappingService
 from app.services.soa_extraction import SoAExtractionService
 
@@ -33,6 +35,8 @@ class IngestionResult:
         soa_section_path: str | None = None,
         soa_confidence: float | None = None,
         cell_anchors_created: int = 0,
+        facts_count: int = 0,
+        facts_needs_review: list[str] | None = None,
         warnings: list[str] | None = None,
         needs_review: bool = False,
         docx_summary: dict[str, Any] | None = None,
@@ -45,6 +49,8 @@ class IngestionResult:
         self.soa_section_path = soa_section_path
         self.soa_confidence = soa_confidence
         self.cell_anchors_created = cell_anchors_created
+        self.facts_count = facts_count
+        self.facts_needs_review = facts_needs_review or []
         self.warnings = warnings or []
         self.needs_review = needs_review
         self.docx_summary = docx_summary or {}
@@ -119,6 +125,10 @@ class IngestionService:
         study_id = document.study_id
         
         # Re-ingest: удаляем существующие anchors и facts для этого doc_version
+        logger.info(f"Удаление существующих chunks для doc_version_id={doc_version_id}")
+        await self.db.execute(delete(Chunk).where(Chunk.doc_version_id == doc_version_id))
+        await self.db.flush()
+
         logger.info(f"Удаление существующих anchors для doc_version_id={doc_version_id}")
         delete_stmt = delete(Anchor).where(Anchor.doc_version_id == doc_version_id)
         await self.db.execute(delete_stmt)
@@ -144,6 +154,8 @@ class IngestionService:
         soa_section_path: str | None = None
         soa_confidence: float | None = None
         cell_anchors_created = 0
+        facts_count = 0
+        facts_needs_review: list[str] = []
         warnings: list[str] = []
         needs_review = False
         docx_summary: dict[str, Any] | None = None
@@ -225,7 +237,7 @@ class IngestionService:
                 
                 # Создаём факты для visits
                 if soa_result.visits:
-                    visit_anchor_ids = [v.anchor_id for v in soa_result.visits if v.anchor_id]
+                    visit_anchor_ids = _dedupe_keep_order([v.anchor_id for v in soa_result.visits if v.anchor_id])
                     visits_fact = Fact(
                         study_id=study_id,
                         fact_type="soa",
@@ -238,6 +250,9 @@ class IngestionService:
                     await self.db.flush()
                     
                     # Создаём evidence для visits
+                    await self.db.execute(
+                        delete(FactEvidence).where(FactEvidence.fact_id == visits_fact.id)
+                    )
                     for anchor_id in visit_anchor_ids:
                         evidence = FactEvidence(
                             fact_id=visits_fact.id,
@@ -248,7 +263,7 @@ class IngestionService:
                 
                 # Создаём факты для procedures
                 if soa_result.procedures:
-                    proc_anchor_ids = [p.anchor_id for p in soa_result.procedures if p.anchor_id]
+                    proc_anchor_ids = _dedupe_keep_order([p.anchor_id for p in soa_result.procedures if p.anchor_id])
                     procedures_fact = Fact(
                         study_id=study_id,
                         fact_type="soa",
@@ -261,6 +276,9 @@ class IngestionService:
                     await self.db.flush()
                     
                     # Создаём evidence для procedures
+                    await self.db.execute(
+                        delete(FactEvidence).where(FactEvidence.fact_id == procedures_fact.id)
+                    )
                     for anchor_id in proc_anchor_ids:
                         evidence = FactEvidence(
                             fact_id=procedures_fact.id,
@@ -271,7 +289,7 @@ class IngestionService:
                 
                 # Создаём факт для matrix
                 if soa_result.matrix:
-                    matrix_anchor_ids = [m.anchor_id for m in soa_result.matrix if m.anchor_id]
+                    matrix_anchor_ids = _dedupe_keep_order([m.anchor_id for m in soa_result.matrix if m.anchor_id])
                     matrix_fact = Fact(
                         study_id=study_id,
                         fact_type="soa",
@@ -284,6 +302,9 @@ class IngestionService:
                     await self.db.flush()
                     
                     # Создаём evidence для matrix (ограничиваем размером для производительности)
+                    await self.db.execute(
+                        delete(FactEvidence).where(FactEvidence.fact_id == matrix_fact.id)
+                    )
                     for anchor_id in matrix_anchor_ids[:100]:  # Ограничиваем первыми 100
                         evidence = FactEvidence(
                             fact_id=matrix_fact.id,
@@ -306,6 +327,22 @@ class IngestionService:
                 # Если это протокол, возможно стоит поставить needs_review
                 if document.doc_type.value == "protocol":
                     warnings.append("SoA таблица не найдена в протоколе (может потребоваться ручная проверка)")
+
+            # Шаг 6: Создание chunks (Narrative Index) на основе anchors (исключая cell)
+            logger.info(f"Запуск chunking для doc_version_id={doc_version_id}")
+            chunking_service = ChunkingService(self.db)
+            chunks_created = await chunking_service.rebuild_chunks_for_doc_version(doc_version_id)
+
+            # Шаг 5.5: Rules-first извлечение фактов (после сохранения anchors и завершения SoA)
+            logger.info(f"Запуск rules-first извлечения фактов для doc_version_id={doc_version_id}")
+            fact_service = FactExtractionService(self.db)
+            fact_res = await fact_service.extract_and_upsert(doc_version_id, commit=False)
+            facts_count = fact_res.facts_count
+            facts_needs_review = [
+                f"{f.fact_type}/{f.fact_key}" for f in fact_res.facts if f.status == FactStatus.NEEDS_REVIEW
+            ]
+            if facts_needs_review:
+                needs_review = True
             
             # Шаг 6: Автоматический маппинг секций
             logger.info(f"Запуск маппинга секций для doc_version_id={doc_version_id}")
@@ -357,10 +394,23 @@ class IngestionService:
             soa_section_path=soa_section_path,
             soa_confidence=soa_confidence,
             cell_anchors_created=cell_anchors_created,
+            facts_count=facts_count,
+            facts_needs_review=facts_needs_review,
             warnings=warnings if warnings else None,
             needs_review=needs_review,
             docx_summary=docx_summary if file_ext == ".docx" else None,
         )
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in items:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
 
 
 __all__ = ["IngestionService", "IngestionResult"]

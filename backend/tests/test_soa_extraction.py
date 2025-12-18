@@ -120,6 +120,99 @@ class TestSoAExtraction:
         return tmp_path
 
     @pytest.fixture
+    def soa_docx_file_with_appendix_trap(self) -> Path:
+        """
+        Создает тестовый DOCX с двумя таблицами:
+        - Реальная SoA под заголовком "Schedule of Activities"
+        - Похожая по структуре матрица в приложении/шкале (должна быть отфильтрована штрафами)
+        """
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path = Path(tmp_file.name)
+        tmp_file.close()
+
+        doc = DocxDocument()
+
+        # Реальная SoA
+        doc.add_paragraph("Schedule of Activities", style="Heading 1")
+        soa_table = doc.add_table(rows=4, cols=4)
+        soa_table.style = "Light Grid Accent 1"
+        hdr = soa_table.rows[0].cells
+        hdr[0].text = "Procedure"
+        hdr[1].text = "Screening"
+        hdr[2].text = "Baseline"
+        hdr[3].text = "Week 4"
+        rows = [
+            ("Informed consent", "X", "X", ""),
+            ("Vitals", "X", "X", "X"),
+            ("ECG", "", "X", ""),
+        ]
+        for i, (proc, a, b, c) in enumerate(rows, start=1):
+            soa_table.rows[i].cells[0].text = proc
+            soa_table.rows[i].cells[1].text = a
+            soa_table.rows[i].cells[2].text = b
+            soa_table.rows[i].cells[3].text = c
+
+        # Приложение/шкала с "ловушкой" (похожая матрица)
+        doc.add_paragraph("APPENDIX 6 / Clinical Global Impressions Scale", style="Heading 1")
+        trap_table = doc.add_table(rows=4, cols=4)
+        trap_table.style = "Light Grid Accent 1"
+        thdr = trap_table.rows[0].cells
+        thdr[0].text = "Item"
+        thdr[1].text = "Visit 1"
+        thdr[2].text = "Visit 2"
+        thdr[3].text = "Visit 3"
+        trap_rows = [
+            ("Question 1", "X", "X", ""),
+            ("Question 2", "X", "", "X"),
+            ("Question 3", "", "X", "X"),
+        ]
+        for i, (item, a, b, c) in enumerate(trap_rows, start=1):
+            trap_table.rows[i].cells[0].text = item
+            trap_table.rows[i].cells[1].text = a
+            trap_table.rows[i].cells[2].text = b
+            trap_table.rows[i].cells[3].text = c
+
+        doc.save(str(tmp_path))
+        return tmp_path
+
+    @pytest.fixture
+    async def test_version_with_soa_and_appendix_trap(
+        self, db: AsyncSession, test_document: Document, soa_docx_file_with_appendix_trap: Path
+    ) -> DocumentVersion:
+        abs_path = soa_docx_file_with_appendix_trap.resolve()
+        if abs_path.as_posix().startswith("/"):
+            file_uri = f"file://{abs_path.as_posix()}"
+        else:
+            file_uri = f"file:///{abs_path.as_posix()}"
+
+        version = DocumentVersion(
+            document_id=test_document.id,
+            version_label="v1.0",
+            source_file_uri=file_uri,
+            source_sha256="test_hash",
+            ingestion_status=IngestionStatus.UPLOADED,
+        )
+        db.add(version)
+        await db.commit()
+        await db.refresh(version)
+        return version
+
+    @pytest.mark.asyncio
+    async def test_soa_extraction_avoids_appendix_tables(
+        self, db: AsyncSession, test_version_with_soa_and_appendix_trap: DocumentVersion
+    ):
+        """Тест, что SoA extractor не выбирает таблицу из Appendix/Scale при наличии реальной SoA."""
+        service = IngestionService(db)
+        result = await service.ingest(test_version_with_soa_and_appendix_trap.id)
+        await db.commit()
+
+        assert result.soa_detected is True
+
+        # Проверяем, что выбранный section_path не содержит Appendix (берём из IngestionResult)
+        assert result.soa_section_path is not None
+        assert "appendix" not in str(result.soa_section_path).lower()
+
+    @pytest.fixture
     async def test_version_with_soa(
         self, db: AsyncSession, test_document: Document, soa_docx_file: Path
     ) -> DocumentVersion:

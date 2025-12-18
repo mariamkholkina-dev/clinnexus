@@ -1,7 +1,7 @@
 param(
   [string]$ApiBase = "http://localhost:8000",
   [string]$WorkspaceId = "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  [string]$DocxPath = "C:\Users\0\clinnexus\scripts\CNS-CD0080045-06_Protocol synopsis_2019.11.05_NV.docx",
+  [string]$DocxPath = "C:\Users\0\clinnexus\scripts\2_DMBN_ALZH-2022-II_Протокол Димебон_2.0 от 11.08.2023.docx",
   [int]$TimeoutSec = 300
 )
 

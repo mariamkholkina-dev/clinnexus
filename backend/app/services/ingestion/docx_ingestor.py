@@ -56,6 +56,10 @@ def get_text_hash(text_norm: str) -> str:
     return hashlib.sha256(text_norm.encode('utf-8')).hexdigest()
 
 
+# Константа для титульной страницы (frontmatter)
+FRONTMATTER_SECTION = "__FRONTMATTER__"
+
+
 def normalize_section_path(path_parts: list[str]) -> str:
     """
     Нормализует путь секции: trim + collapse spaces.
@@ -64,7 +68,7 @@ def normalize_section_path(path_parts: list[str]) -> str:
         path_parts: Список частей пути (заголовков)
         
     Returns:
-        Нормализованный путь (например "H1/H2/H3" или "ROOT")
+        Нормализованный путь (например "H1/H2/H3" или "ROOT" или "__FRONTMATTER__")
     """
     if not path_parts:
         return "ROOT"
@@ -164,12 +168,18 @@ class DocxIngestor:
         detector = HeadingDetector(enable_visual_fallback=False)
         detector.set_doc_stats(doc_stats)
         
+        # Счётчик отклонений для numbering детекции
+        rejection_counter: dict[str, int] = {}
+        detector._rejection_counter = rejection_counter
+        
         # Собираем hits для всех параграфов
         paragraph_hits: list[tuple[Paragraph, HeadingHit]] = []
         heading_count = 0
         
+        para_index_for_detection = 0
         for paragraph in doc.paragraphs:
-            hit = detector.detect(paragraph)
+            para_index_for_detection += 1
+            hit = detector.detect(paragraph, para_index=para_index_for_detection)
             paragraph_hits.append((paragraph, hit))
             if hit.is_heading:
                 heading_count += 1
@@ -184,11 +194,16 @@ class DocxIngestor:
             detector = HeadingDetector(enable_visual_fallback=True)
             detector.set_doc_stats(doc_stats)
             
+            # Счётчик отклонений для numbering детекции (переиспользуем)
+            detector._rejection_counter = rejection_counter
+            
             # Пересчитываем hits с visual fallback
             paragraph_hits = []
             heading_count = 0
+            para_index_for_detection = 0
             for paragraph in doc.paragraphs:
-                hit = detector.detect(paragraph)
+                para_index_for_detection += 1
+                hit = detector.detect(paragraph, para_index=para_index_for_detection)
                 paragraph_hits.append((paragraph, hit))
                 if hit.is_heading:
                     heading_count += 1
@@ -196,6 +211,9 @@ class DocxIngestor:
         # Стек заголовков для построения section_path
         # Каждый элемент: (level, normalized_title)
         heading_stack: list[tuple[int, str]] = []
+        
+        # Флаг: был ли найден первый реальный заголовок (style или outline, не numbering/visual)
+        first_real_heading_found = False
         
         # Счётчики ordinal для каждого (section_path, content_type)
         # Ключ: (section_path, content_type)
@@ -208,6 +226,9 @@ class DocxIngestor:
         heading_detected_count = 0
         heading_levels_histogram: dict[str, int] = {}
         heading_detection_mode_counts: dict[str, int] = {}
+        # Подсчитываем общее количество отклонённых numbering кандидатов
+        false_heading_filtered_count = sum(rejection_counter.values())
+        frontmatter_paragraphs_count = 0  # Счётчик параграфов в frontmatter
         
         para_index = 0  # Счётчик всех параграфов для location_json
         
@@ -230,26 +251,55 @@ class DocxIngestor:
             content_type: AnchorContentType
             current_section_path: str
             
+            # Проверяем, является ли это реальным заголовком (style или outline)
+            is_real_heading = hit.is_heading and hit.mode in ("style", "outline")
+            
+            # Если это первый реальный заголовок, отмечаем это
+            if is_real_heading and not first_real_heading_found:
+                first_real_heading_found = True
+            
+            # Подсчитываем параграфы в frontmatter (до первого реального заголовка)
+            if not first_real_heading_found:
+                frontmatter_paragraphs_count += 1
+            
             if hit.is_heading:
                 # Это заголовок
-                content_type = AnchorContentType.HDR
                 level = hit.level or 1
                 
-                # Обновляем стек заголовков
-                # Удаляем все заголовки с уровнем >= текущего уровня
-                heading_stack = [h for h in heading_stack if h[0] < level]
-                # Добавляем текущий заголовок (используем normalized_title)
-                heading_stack.append((level, hit.normalized_title))
+                # Обновляем стек заголовков только для реальных заголовков
+                # Для numbering/visual заголовков до первого реального заголовка не обновляем стек
+                if is_real_heading:
+                    # Удаляем все заголовки с уровнем >= текущего уровня
+                    heading_stack = [h for h in heading_stack if h[0] < level]
+                    # Добавляем текущий заголовок (используем normalized_title)
+                    heading_stack.append((level, hit.normalized_title))
                 
-                # Получаем текущий section_path
-                path_parts = [h[1] for h in heading_stack]
-                current_section_path = normalize_section_path(path_parts)
+                # Определяем section_path
+                if first_real_heading_found:
+                    # После первого реального заголовка используем нормальный путь
+                    path_parts = [h[1] for h in heading_stack]
+                    current_section_path = normalize_section_path(path_parts)
+                else:
+                    # До первого реального заголовка используем FRONTMATTER
+                    current_section_path = FRONTMATTER_SECTION
                 
-                # Обновляем диагностику
-                heading_detected_count += 1
-                level_str = str(level)
-                heading_levels_histogram[level_str] = heading_levels_histogram.get(level_str, 0) + 1
-                heading_detection_mode_counts[hit.mode] = heading_detection_mode_counts.get(hit.mode, 0) + 1
+                # Создаём HDR anchor только для реальных заголовков
+                # Для numbering/visual заголовков до первого реального заголовка не создаём HDR
+                if is_real_heading:
+                    content_type = AnchorContentType.HDR
+                    
+                    # Обновляем диагностику
+                    heading_detected_count += 1
+                    level_str = str(level)
+                    heading_levels_histogram[level_str] = heading_levels_histogram.get(level_str, 0) + 1
+                    heading_detection_mode_counts[hit.mode] = heading_detection_mode_counts.get(hit.mode, 0) + 1
+                else:
+                    # Numbering/visual заголовок до первого реального заголовка → обрабатываем как обычный параграф
+                    if is_list_item(paragraph):
+                        content_type = AnchorContentType.LI
+                    else:
+                        content_type = AnchorContentType.P
+                    # Не обновляем диагностику заголовков для таких случаев
             else:
                 # Обычный параграф или элемент списка
                 if is_list_item(paragraph):
@@ -257,9 +307,14 @@ class DocxIngestor:
                 else:
                     content_type = AnchorContentType.P
                 
-                # Используем текущий стек заголовков для section_path
-                path_parts = [h[1] for h in heading_stack]
-                current_section_path = normalize_section_path(path_parts)
+                # Определяем section_path
+                if first_real_heading_found:
+                    # После первого реального заголовка используем нормальный путь
+                    path_parts = [h[1] for h in heading_stack]
+                    current_section_path = normalize_section_path(path_parts)
+                else:
+                    # До первого реального заголовка используем FRONTMATTER
+                    current_section_path = FRONTMATTER_SECTION
             
             # Получаем ordinal для данного (section_path, content_type)
             key = (current_section_path, content_type)
@@ -294,6 +349,59 @@ class DocxIngestor:
             )
             
             anchors.append(anchor)
+
+        # Пытаемся извлечь footnotes, если python-docx предоставляет доступ.
+        # Важно: если доступа нет (часто так и бывает), просто пишем warning и продолжаем.
+        try:
+            footnotes = getattr(getattr(doc, "part", None), "footnotes", None)
+            footnotes_part = getattr(footnotes, "part", None) if footnotes is not None else None
+            footnotes_list = getattr(footnotes_part, "footnotes", None) if footnotes_part is not None else None
+
+            if footnotes_list:
+                fn_section_path = "FOOTNOTES"
+                fn_para_index = 0
+                for fn_idx, fn in enumerate(footnotes_list):
+                    # Пробуем получить параграфы с текстом из footnote
+                    fn_paragraphs = getattr(fn, "paragraphs", None)
+                    if not fn_paragraphs:
+                        continue
+                    for p in fn_paragraphs:
+                        fn_para_index += 1
+                        text_raw = getattr(p, "text", "") or ""
+                        text_norm = normalize_text(text_raw)
+                        if not text_norm:
+                            continue
+
+                        key = (fn_section_path, AnchorContentType.FN)
+                        ordinal = ordinal_counters.get(key, 0) + 1
+                        ordinal_counters[key] = ordinal
+                        text_hash = get_text_hash(text_norm)
+                        anchor_id = f"{str(doc_version_id)}:{fn_section_path}:{AnchorContentType.FN.value}:{ordinal}:{text_hash}"
+
+                        location_json = {
+                            "para_index": None,
+                            "fn_index": fn_idx,
+                            "fn_para_index": fn_para_index,
+                            "section_path": fn_section_path,
+                        }
+
+                        anchors.append(
+                            AnchorCreate(
+                                doc_version_id=doc_version_id,
+                                anchor_id=anchor_id,
+                                section_path=fn_section_path,
+                                content_type=AnchorContentType.FN,
+                                ordinal=ordinal,
+                                text_raw=text_raw,
+                                text_norm=text_norm,
+                                text_hash=text_hash,
+                                location_json=location_json,
+                            )
+                        )
+            else:
+                warnings.append("Footnotes недоступны через текущий DOCX парсер; якоря fn не созданы")
+        except Exception:
+            warnings.append("Footnotes недоступны через текущий DOCX парсер; якоря fn не созданы")
         
         # Определяем качество заголовков
         heading_quality = "none"
@@ -330,6 +438,9 @@ class DocxIngestor:
             "heading_levels_histogram": heading_levels_histogram,
             "heading_detection_mode_counts": heading_detection_mode_counts,
             "heading_quality": heading_quality,
+            # Новые метрики фильтрации
+            "false_heading_filtered_count": false_heading_filtered_count,
+            "frontmatter_paragraphs_count": frontmatter_paragraphs_count,
             "warnings": warnings,
         }
         

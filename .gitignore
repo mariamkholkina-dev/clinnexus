@@ -57,5 +57,16 @@ logs/
 *.tmp
 *.temp
 .cache/
+tmp/
 
+# Documents
+*.doc
+*.docx
+*.pdf
 
+# Scripts
+scripts/протоколы/
+
+# Data directory
+/data
+.data/

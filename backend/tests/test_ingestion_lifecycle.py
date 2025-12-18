@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,14 +61,26 @@ class TestIngestionLifecycle:
         return document
 
     @pytest.fixture
+    def sample_pdf_file(self, tmp_path: Path) -> Path:
+        """Создаёт реальный PDF-файл-заглушку, чтобы ingestion проходил проверку существования файла."""
+        p = tmp_path / "test.pdf"
+        p.write_bytes(b"%PDF-1.4\n%test\n")  # минимальная заглушка
+        return p
+
+    @pytest.fixture
     async def test_version_uploaded(
-        self, db: AsyncSession, test_document: Document
+        self, db: AsyncSession, test_document: Document, sample_pdf_file: Path
     ) -> DocumentVersion:
         """Создает версию документа со статусом UPLOADED и файлом."""
+        abs_path = sample_pdf_file.resolve()
+        if abs_path.as_posix().startswith("/"):
+            file_uri = f"file://{abs_path.as_posix()}"
+        else:
+            file_uri = f"file:///{abs_path.as_posix()}"
         version = DocumentVersion(
             document_id=test_document.id,
             version_label="v1.0",
-            source_file_uri="file:///test/file.pdf",
+            source_file_uri=file_uri,
             source_sha256="abc123",
             effective_date=date.today(),
             ingestion_status=IngestionStatus.UPLOADED,
@@ -97,13 +110,18 @@ class TestIngestionLifecycle:
 
     @pytest.fixture
     async def test_version_processing(
-        self, db: AsyncSession, test_document: Document
+        self, db: AsyncSession, test_document: Document, sample_pdf_file: Path
     ) -> DocumentVersion:
         """Создает версию документа со статусом PROCESSING."""
+        abs_path = sample_pdf_file.resolve()
+        if abs_path.as_posix().startswith("/"):
+            file_uri = f"file://{abs_path.as_posix()}"
+        else:
+            file_uri = f"file:///{abs_path.as_posix()}"
         version = DocumentVersion(
             document_id=test_document.id,
             version_label="v1.0",
-            source_file_uri="file:///test/file.pdf",
+            source_file_uri=file_uri,
             source_sha256="abc123",
             effective_date=date.today(),
             ingestion_status=IngestionStatus.PROCESSING,
@@ -115,13 +133,18 @@ class TestIngestionLifecycle:
 
     @pytest.fixture
     async def test_version_failed(
-        self, db: AsyncSession, test_document: Document
+        self, db: AsyncSession, test_document: Document, sample_pdf_file: Path
     ) -> DocumentVersion:
         """Создает версию документа со статусом FAILED."""
+        abs_path = sample_pdf_file.resolve()
+        if abs_path.as_posix().startswith("/"):
+            file_uri = f"file://{abs_path.as_posix()}"
+        else:
+            file_uri = f"file:///{abs_path.as_posix()}"
         version = DocumentVersion(
             document_id=test_document.id,
             version_label="v1.0",
-            source_file_uri="file:///test/file.pdf",
+            source_file_uri=file_uri,
             source_sha256="abc123",
             effective_date=date.today(),
             ingestion_status=IngestionStatus.FAILED,
@@ -134,13 +157,18 @@ class TestIngestionLifecycle:
 
     @pytest.fixture
     async def test_version_needs_review(
-        self, db: AsyncSession, test_document: Document
+        self, db: AsyncSession, test_document: Document, sample_pdf_file: Path
     ) -> DocumentVersion:
         """Создает версию документа со статусом NEEDS_REVIEW."""
+        abs_path = sample_pdf_file.resolve()
+        if abs_path.as_posix().startswith("/"):
+            file_uri = f"file://{abs_path.as_posix()}"
+        else:
+            file_uri = f"file:///{abs_path.as_posix()}"
         version = DocumentVersion(
             document_id=test_document.id,
             version_label="v1.0",
-            source_file_uri="file:///test/file.pdf",
+            source_file_uri=file_uri,
             source_sha256="abc123",
             effective_date=date.today(),
             ingestion_status=IngestionStatus.NEEDS_REVIEW,

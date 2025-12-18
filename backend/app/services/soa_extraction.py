@@ -11,6 +11,8 @@ from uuid import UUID
 from docx import Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.oxml.text.paragraph import CT_P
+from docx.oxml.table import CT_Tbl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +56,114 @@ class SoAExtractionService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    def _iter_doc_body_blocks(self, doc: Document):
+        """
+        Итератор по блокам документа в исходном порядке: Paragraph / Table.
+        Нужен, чтобы корректно брать ближайший контекст перед таблицей.
+        """
+        for child in doc.element.body.iterchildren():
+            if isinstance(child, CT_P):
+                yield Paragraph(child, doc)
+            elif isinstance(child, CT_Tbl):
+                yield Table(child, doc)
+
+    def _heading_level(self, para: Paragraph) -> int | None:
+        if not para.style or not para.style.name:
+            return None
+        style = para.style.name
+        if style.startswith("Heading") and style.replace("Heading", "").strip().isdigit():
+            try:
+                return int(style.replace("Heading", "").strip())
+            except ValueError:
+                return None
+        return None
+
+    def _get_context_for_table(
+        self,
+        doc: Document,
+        table_index: int,
+        *,
+        max_prev_paras: int = 6,
+        max_heading_stack: int = 4,
+    ) -> tuple[str, list[str]]:
+        """
+        Возвращает (heading_context, prev_paragraphs) для таблицы с индексом table_index.
+        heading_context: "H1 / H2 / ..."
+        prev_paragraphs: тексты нескольких параграфов перед таблицей.
+        """
+        heading_stack: list[tuple[int, str]] = []
+        prev_paras: list[str] = []
+        cur_table_idx = -1
+
+        for block in self._iter_doc_body_blocks(doc):
+            if isinstance(block, Paragraph):
+                lvl = self._heading_level(block)
+                text_norm = normalize_text(block.text)
+                if text_norm:
+                    prev_paras.append(text_norm)
+                    if len(prev_paras) > max_prev_paras:
+                        prev_paras = prev_paras[-max_prev_paras:]
+                if lvl and text_norm:
+                    heading_stack = [h for h in heading_stack if h[0] < lvl]
+                    heading_stack.append((lvl, text_norm))
+                    if len(heading_stack) > max_heading_stack:
+                        heading_stack = heading_stack[-max_heading_stack:]
+            else:
+                # Table
+                cur_table_idx += 1
+                if cur_table_idx == table_index:
+                    break
+
+        heading_context = " / ".join([h[1] for h in heading_stack]) if heading_stack else "ROOT"
+        return heading_context, prev_paras
+
+    def _soa_context_score(self, text: str) -> tuple[float, list[str]]:
+        """
+        Штрафы/бусты по ближайшему контексту (заголовки/параграфы).
+        """
+        t = (text or "").lower()
+        reasons: list[str] = []
+        score = 0.0
+
+        # Позитивный контекст SoA
+        pos = [
+            "schedule of activities",
+            "schedule of assessments",
+            "schedule of procedures",
+            "table of activities",
+            "расписание процедур",
+            "график процедур",
+            "расписание мероприятий",
+            "график мероприятий",
+        ]
+        # Негативный контекст (приложения/шкалы/анкеты)
+        neg = [
+            "appendix",
+            "приложение",
+            "scale",
+            "шкала",
+            "questionnaire",
+            "опросник",
+            "анкета",
+            "form",
+            "форма",
+        ]
+
+        for kw in neg:
+            if kw in t:
+                score -= 8.0
+                reasons.append(f"-appendix_ctx:'{kw}'")
+                # Если это appendix/scale контекст — не даём "позитивному" сигналу перебить штраф.
+                return score, reasons
+
+        for kw in pos:
+            if kw in t:
+                score += 6.0
+                reasons.append(f"+soa_ctx:'{kw}'")
+                break
+
+        return score, reasons
+
     def _get_section_path_for_table(
         self,
         doc: Document,
@@ -71,24 +181,10 @@ class SoAExtractionService:
         
         current_stack = heading_stack.copy()
         
-        # Проходим по параграфам до таблицы
-        para_count = 0
-        for para in doc.paragraphs:
-            para_count += 1
-            style_name = para.style.name if para.style else "Normal"
-            
-            # Проверяем, является ли заголовком
-            if style_name.startswith('Heading') and style_name.replace('Heading', '').strip().isdigit():
-                level_str = style_name.replace('Heading', '').strip()
-                try:
-                    level = int(level_str)
-                    text_norm = normalize_text(para.text)
-                    if text_norm:
-                        # Обновляем стек заголовков
-                        current_stack = [h for h in current_stack if h[0] < level]
-                        current_stack.append((level, text_norm))
-                except ValueError:
-                    pass
+        # Исторический API оставляем, но делаем корректный контекст по table_index.
+        heading_context, _prev_paras = self._get_context_for_table(doc, table_index)
+        if heading_context and heading_context != "ROOT":
+            return normalize_section_path(heading_context.split(" / "))
         
         # Если стек пуст, используем ROOT
         if not current_stack:
@@ -108,28 +204,14 @@ class SoAExtractionService:
         score = 0.0
         reasons: list[str] = []
         
-        # Получаем section_path
-        section_path = self._get_section_path_for_table(doc, table_index, heading_stack)
-        
-        # Проверяем ближайшие заголовки и параграфы
-        soa_keywords = [
-            "schedule of activities",
-            "schedule of assessments",
-            "table of activities",
-            "schedule of procedures",
-            "график мероприятий",
-            "расписание мероприятий",
-        ]
-        
-        # Ищем в параграфах перед таблицей
-        para_before = []
-        for para in doc.paragraphs[:50]:  # Ограничиваем поиск первыми 50 параграфами
-            text_lower = normalize_text(para.text).lower()
-            for keyword in soa_keywords:
-                if keyword in text_lower:
-                    score += 5.0
-                    reasons.append(f"Найден ключевое слово '{keyword}' в заголовке/параграфе")
-                    break
+        # Получаем ближайший контекст (заголовки/параграфы) для этой таблицы
+        heading_context, prev_paras = self._get_context_for_table(doc, table_index)
+        section_path = normalize_section_path(heading_context.split(" / ")) if heading_context else "ROOT"
+
+        ctx_text = " ".join([heading_context] + prev_paras)
+        ctx_delta, ctx_reasons = self._soa_context_score(ctx_text)
+        score += ctx_delta
+        reasons.extend(ctx_reasons)
         
         # Проверяем первую строку и первый столбец
         if len(table.rows) == 0:
@@ -210,7 +292,7 @@ class SoAExtractionService:
         logger.info(
             f"Оценка таблицы {table_index}: score={score:.1f}, "
             f"markers={marker_count}, numbers={number_count}, "
-            f"reasons={reason_str}"
+            f"heading_ctx={heading_context!r}, reasons={reason_str}"
         )
         
         return TableScore(table_index, score, section_path, reason_str)
@@ -224,12 +306,27 @@ class SoAExtractionService:
         if len(doc.tables) == 0:
             return None
         
-        best_score: TableScore | None = None
+        scores: list[TableScore] = []
         
         for i, table in enumerate(doc.tables):
             score_result = self._score_table_for_soa(table, i, doc, heading_stack)
-            if best_score is None or score_result.score > best_score.score:
-                best_score = score_result
+            scores.append(score_result)
+
+        if not scores:
+            return None
+
+        scores_sorted = sorted(scores, key=lambda s: s.score, reverse=True)
+        best_score = scores_sorted[0]
+
+        # Логируем top-3 кандидата с контекстом
+        top3 = scores_sorted[:3]
+        for rank, s in enumerate(top3, start=1):
+            heading_context, _ = self._get_context_for_table(doc, s.table_index)
+            logger.info(
+                "SoA кандидаты: "
+                f"rank={rank}, table_index={s.table_index}, score={s.score:.1f}, "
+                f"heading_ctx={heading_context!r}, section={s.section_path}, reason={s.reason}"
+            )
         
         # Порог для принятия решения
         if best_score:
@@ -401,6 +498,7 @@ class SoAExtractionService:
                 col_idx = 0
             
             location_json = {
+                "table_id": table_index,
                 "table_index": table_index,
                 "row_idx": row_idx,
                 "col_idx": col_idx,
@@ -471,6 +569,7 @@ class SoAExtractionService:
                 col_idx = idx + 1
             
             location_json = {
+                "table_id": table_index,
                 "table_index": table_index,
                 "row_idx": row_idx,
                 "col_idx": col_idx,
@@ -536,6 +635,7 @@ class SoAExtractionService:
                     col_headers = [visits[visit_idx].label] if visit_idx < len(visits) else []
                     
                     location_json = {
+                        "table_id": table_index,
                         "table_index": table_index,
                         "row_idx": row_idx,
                         "col_idx": col_idx,

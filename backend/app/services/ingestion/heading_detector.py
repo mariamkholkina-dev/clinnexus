@@ -1,6 +1,7 @@
 """Детектор заголовков для DOCX документов."""
 from __future__ import annotations
 
+import logging
 import re
 import statistics
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ from typing import Any
 from docx.oxml.ns import qn
 from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph
+
+logger = logging.getLogger("clinnexus")
 
 
 @dataclass
@@ -88,7 +91,7 @@ class HeadingDetector:
         """Устанавливает статистику документа для visual fallback."""
         self._doc_stats = doc_stats
     
-    def detect(self, paragraph: Paragraph) -> HeadingHit:
+    def detect(self, paragraph: Paragraph, para_index: int | None = None) -> HeadingHit:
         """
         Определяет, является ли параграф заголовком.
         
@@ -100,6 +103,7 @@ class HeadingDetector:
         
         Args:
             paragraph: Параграф из python-docx
+            para_index: Индекс параграфа для debug логирования (опционально)
             
         Returns:
             HeadingHit с результатом детекции
@@ -125,7 +129,9 @@ class HeadingDetector:
             return hit
         
         # 3. Проверка по нумерации
-        hit = self.detect_by_numbering(paragraph)
+        hit = self.detect_by_numbering(
+            paragraph, para_index=para_index, rejection_counter=getattr(self, "_rejection_counter", None)
+        )
         if hit and hit.is_heading:
             return hit
         
@@ -239,19 +245,28 @@ class HeadingDetector:
             normalized_title=normalize_title(text),
         )
     
-    def detect_by_numbering(self, paragraph: Paragraph) -> HeadingHit | None:
+    def detect_by_numbering(
+        self,
+        paragraph: Paragraph,
+        para_index: int | None = None,
+        rejection_counter: dict[str, int] | None = None,
+    ) -> HeadingHit | None:
         """
         Детекция заголовка по нумерации (1.2.3 ...).
         
-        Паттерн: ^\d+(\.\d+)*[)\.]?\s+\S+
+        Паттерн: ^\d+(\.\d+)*[)\.]?\s+[A-ZА-ЯЁ]
         Level = count('.') + 1
         
         Анти-фильтры:
         - если paragraph является list item (numPr) → НЕ считать заголовком
-        - если длина > 200 → скорее не заголовок
+        - если текст заканчивается точкой → скорее предложение, не заголовок
+        - если текст содержит >= 2 предложений (". " встречается >= 2 раз) → отклоняем
+        - если len(text) > 120 или word_count > 14 → слишком длинный для заголовка
+        - если уровень 1 (без точек) → требуем дополнительные сигналы (ALL CAPS, bold, centered, большой шрифт)
         
         Args:
             paragraph: Параграф из python-docx
+            para_index: Индекс параграфа для debug логирования (опционально)
             
         Returns:
             HeadingHit или None, если не заголовок
@@ -274,13 +289,48 @@ class HeadingDetector:
         except (AttributeError, TypeError):
             pass
         
-        # Анти-фильтр: слишком длинный текст
-        if len(text) > 200:
+        # Анти-фильтр: текст заканчивается точкой → скорее предложение
+        if text.endswith('.'):
+            if rejection_counter is not None:
+                rejection_counter["ends_with_period"] = rejection_counter.get("ends_with_period", 0) + 1
+            if para_index is not None:
+                text_preview = text[:80] if len(text) > 80 else text
+                logger.debug(
+                    f"Отклонён параграф #{para_index} по numbering: заканчивается точкой. "
+                    f"Текст: {text_preview!r}"
+                )
             return None
         
-        # Паттерн: ^\d+(\.\d+)*[)\.]?\s+\S+
-        # Примеры: "1.2 Study Objectives", "1.2.3.4 Background", "1) Introduction"
-        pattern = r'^(\d+(?:\.\d+)*)[)\.]?\s+(\S+)'
+        # Анти-фильтр: несколько предложений (>= 2 ". ")
+        sentence_separators = text.count(". ")
+        if sentence_separators >= 2:
+            if rejection_counter is not None:
+                rejection_counter["multiple_sentences"] = rejection_counter.get("multiple_sentences", 0) + 1
+            if para_index is not None:
+                text_preview = text[:80] if len(text) > 80 else text
+                logger.debug(
+                    f"Отклонён параграф #{para_index} по numbering: содержит {sentence_separators + 1} предложений. "
+                    f"Текст: {text_preview!r}"
+                )
+            return None
+        
+        # Анти-фильтр: слишком длинный текст
+        word_count = len(text.split())
+        if len(text) > 120 or word_count > 14:
+            if rejection_counter is not None:
+                rejection_counter["too_long"] = rejection_counter.get("too_long", 0) + 1
+            if para_index is not None:
+                text_preview = text[:80] if len(text) > 80 else text
+                logger.debug(
+                    f"Отклонён параграф #{para_index} по numbering: слишком длинный "
+                    f"(len={len(text)}, words={word_count}). Текст: {text_preview!r}"
+                )
+            return None
+        
+        # Строгий паттерн: после номера должен идти заглавный символ (латиница или кириллица)
+        # Примеры: "3.2 Задачи исследования", "1.2 Study Objectives"
+        # Отклоняем: "2 года. Не применять..." (после "2 " идёт строчная буква)
+        pattern = r'^(\d+(?:\.\d+)*)[)\.]?\s+([A-ZА-ЯЁ])'
         match = re.match(pattern, text)
         if not match:
             return None
@@ -293,6 +343,68 @@ class HeadingDetector:
         # Ограничиваем уровень до 9
         if level > 9:
             return None
+        
+        # Для уровня 1 (без точек) требуем дополнительные сигналы заголовка
+        if level == 1:
+            has_heading_signals = False
+            
+            # Проверка 1: ALL CAPS (>= 80% заглавных букв)
+            # Извлекаем текст после номера
+            text_after_number = text[match.end():].strip()
+            if text_after_number:
+                uppercase_count = sum(1 for c in text_after_number if c.isupper() and c.isalpha())
+                total_alpha = sum(1 for c in text_after_number if c.isalpha())
+                if total_alpha > 0:
+                    uppercase_ratio = uppercase_count / total_alpha
+                    if uppercase_ratio >= 0.8:
+                        has_heading_signals = True
+            
+            # Проверка 2: bold-dominant (>= 80% runs bold)
+            if not has_heading_signals:
+                bold_count = 0
+                total_runs = 0
+                for run in paragraph.runs:
+                    total_runs += 1
+                    if run.bold:
+                        bold_count += 1
+                if total_runs > 0:
+                    bold_ratio = bold_count / total_runs
+                    if bold_ratio >= 0.8:
+                        has_heading_signals = True
+            
+            # Проверка 3: centered alignment
+            if not has_heading_signals:
+                if paragraph.alignment is not None:
+                    if paragraph.alignment == 1:  # CENTER
+                        has_heading_signals = True
+            
+            # Проверка 4: font size > median + 2pt (если есть doc_stats)
+            if not has_heading_signals and self._doc_stats and self._doc_stats.median_font_size:
+                font_sizes = []
+                for run in paragraph.runs:
+                    if run.font and run.font.size is not None:
+                        try:
+                            size_pt = run.font.size.pt
+                            if size_pt:
+                                font_sizes.append(size_pt)
+                        except (AttributeError, TypeError):
+                            pass
+                if font_sizes:
+                    max_font_size = max(font_sizes)
+                    if max_font_size > self._doc_stats.median_font_size + 2:
+                        has_heading_signals = True
+            
+            # Если нет дополнительных сигналов, отклоняем
+            if not has_heading_signals:
+                if rejection_counter is not None:
+                    rejection_counter["level1_no_signals"] = rejection_counter.get("level1_no_signals", 0) + 1
+                if para_index is not None:
+                    text_preview = text[:80] if len(text) > 80 else text
+                    logger.debug(
+                        f"Отклонён параграф #{para_index} по numbering: уровень 1 без дополнительных сигналов заголовка. "
+                        f"Текст: {text_preview!r}"
+                    )
+                return None
         
         return HeadingHit(
             is_heading=True,

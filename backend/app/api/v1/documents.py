@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import urllib.parse
 from uuid import UUID
 from typing import Any
 
@@ -10,12 +12,13 @@ from sqlalchemy import func, select
 
 from app.api.deps import get_db
 from app.core.audit import log_audit
+from app.core.logging import logger
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.storage import save_upload
 from app.worker.job_runner import run_ingestion_now
 from app.db.models.studies import Document, DocumentVersion, Study
 from app.db.models.anchors import Anchor
-from app.db.enums import AnchorContentType, IngestionStatus
+from app.db.enums import AnchorContentType, IngestionStatus, DocumentLanguage
 from app.schemas.common import SoAResult
 from app.schemas.documents import (
     DocumentCreate,
@@ -31,6 +34,211 @@ router = APIRouter()
 
 # Разрешенные расширения файлов
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".xlsx"}
+
+_CYR_RE = re.compile(r"[А-Яа-яЁё]")
+_LAT_RE = re.compile(r"[A-Za-z]")
+
+
+def _uri_to_path(uri: str) -> Path:
+    if uri.startswith("file://"):
+        parsed = urllib.parse.urlparse(uri)
+        path = urllib.parse.unquote(parsed.path)
+        # Windows: file:///C:/path -> /C:/path
+        if path.startswith("/") and len(path) > 3 and path[2] == ":":
+            path = path[1:]
+        return Path(path)
+    return Path(uri)
+
+
+def _detect_language_from_docx(file_path: Path, max_chars: int = 50_000) -> tuple[DocumentLanguage, dict[str, Any]]:
+    """
+    Очень простой детект языка:
+    - считаем количество кириллических и латинских букв
+    - ru/en/mixed на основе долей
+    """
+    try:
+        from docx import Document as DocxDocument  # локальный импорт, чтобы не тянуть зависимость везде
+    except Exception as e:  # noqa: BLE001
+        return DocumentLanguage.UNKNOWN, {"error": f"python-docx import failed: {e}"}
+
+    try:
+        doc = DocxDocument(str(file_path))
+    except Exception as e:  # noqa: BLE001
+        return DocumentLanguage.UNKNOWN, {"error": f"docx open failed: {e}"}
+
+    buf: list[str] = []
+    total = 0
+
+    # paragraphs
+    for p in getattr(doc, "paragraphs", []) or []:
+        t = (getattr(p, "text", "") or "").strip()
+        if not t:
+            continue
+        buf.append(t)
+        total += len(t)
+        if total >= max_chars:
+            break
+
+    # tables (если текста в параграфах мало)
+    if total < max_chars:
+        for tbl in getattr(doc, "tables", []) or []:
+            for row in getattr(tbl, "rows", []) or []:
+                for cell in getattr(row, "cells", []) or []:
+                    t = (getattr(cell, "text", "") or "").strip()
+                    if not t:
+                        continue
+                    buf.append(t)
+                    total += len(t)
+                    if total >= max_chars:
+                        break
+                if total >= max_chars:
+                    break
+            if total >= max_chars:
+                break
+
+    text = "\n".join(buf)[:max_chars]
+    cyr = len(_CYR_RE.findall(text))
+    lat = len(_LAT_RE.findall(text))
+    letters = cyr + lat
+    if letters == 0:
+        return DocumentLanguage.UNKNOWN, {"cyr": cyr, "lat": lat, "letters": letters, "max_chars": max_chars}
+
+    cyr_ratio = cyr / letters
+    lat_ratio = lat / letters
+
+    # thresholds: минимально практичные
+    if cyr_ratio >= 0.7:
+        lang = DocumentLanguage.RU
+    elif lat_ratio >= 0.7:
+        lang = DocumentLanguage.EN
+    elif cyr >= 20 and lat >= 20:
+        lang = DocumentLanguage.MIXED
+    else:
+        lang = DocumentLanguage.UNKNOWN
+
+    meta = {
+        "cyr": cyr,
+        "lat": lat,
+        "letters": letters,
+        "cyr_ratio": round(cyr_ratio, 4),
+        "lat_ratio": round(lat_ratio, 4),
+        "max_chars": max_chars,
+    }
+    return lang, meta
+
+
+def _ensure_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+async def _build_ingestion_summary(
+    *,
+    db: AsyncSession,
+    version: DocumentVersion,
+    ingestion_result: Any | None,
+    final_status: IngestionStatus,
+    warnings: list[str] | None = None,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Формирует ingestion_summary_json со стабильной схемой (MVP шаги 1–6).
+
+    Требуемые ключи (всегда присутствуют):
+    - anchors_created
+    - soa_found
+    - soa_facts_written
+    - chunks_created
+    - mapping_status
+    - warnings
+    - errors
+    """
+    base_summary: dict[str, Any] = version.ingestion_summary_json or {}
+
+    anchors_created = int(getattr(ingestion_result, "anchors_created", 0) or 0) if ingestion_result else 0
+    chunks_created = int(getattr(ingestion_result, "chunks_created", 0) or 0) if ingestion_result else 0
+    soa_found = bool(getattr(ingestion_result, "soa_detected", False)) if ingestion_result else False
+
+    # SoA facts actually written: проверяем по БД (регрессионно устойчиво к изменениям сервиса)
+    soa_facts_counts: dict[str, int] = {"visits": 0, "procedures": 0, "matrix": 0}
+    if ingestion_result is not None:
+        facts_res = await db.execute(
+            select(Fact.fact_key, func.count(Fact.id).label("cnt"))
+            .where(
+                Fact.created_from_doc_version_id == version.id,
+                Fact.fact_type == "soa",
+                Fact.fact_key.in_(("visits", "procedures", "matrix")),
+            )
+            .group_by(Fact.fact_key)
+        )
+        for row in facts_res.all():
+            soa_facts_counts[str(row.fact_key)] = int(row.cnt)
+
+    soa_facts_written = {
+        "visits": soa_facts_counts["visits"] > 0,
+        "procedures": soa_facts_counts["procedures"] > 0,
+        "matrix": soa_facts_counts["matrix"] > 0,
+        "counts": soa_facts_counts,
+    }
+
+    # Маппинг секций: минимальная стабильная схема
+    sections_mapped_count = None
+    sections_needs_review_count = None
+    if ingestion_result is not None and getattr(ingestion_result, "docx_summary", None):
+        ds = getattr(ingestion_result, "docx_summary") or {}
+        if "sections_mapped_count" in ds:
+            sections_mapped_count = ds.get("sections_mapped_count")
+        if "sections_needs_review_count" in ds:
+            sections_needs_review_count = ds.get("sections_needs_review_count")
+
+    mapping_status = {
+        "sections_mapped_count": sections_mapped_count,
+        "sections_needs_review_count": sections_needs_review_count,
+        "status": "needs_review" if final_status == IngestionStatus.NEEDS_REVIEW else ("failed" if final_status == IngestionStatus.FAILED else "ready"),
+    }
+
+    stable_summary: dict[str, Any] = {
+        "anchors_created": anchors_created,
+        "soa_found": soa_found,
+        "soa_facts_written": soa_facts_written,
+        "chunks_created": chunks_created,
+        "mapping_status": mapping_status,
+        "warnings": _ensure_list(warnings),
+        "errors": _ensure_list(errors),
+        # Дублируем для обратной совместимости с существующими тестами/клиентами:
+        "soa_detected": bool(getattr(ingestion_result, "soa_detected", False)) if ingestion_result else False,
+        "needs_review": bool(getattr(ingestion_result, "needs_review", False)) if ingestion_result else (final_status == IngestionStatus.NEEDS_REVIEW),
+    }
+
+    # Сохраняем метаданные загруженного файла, если уже были записаны при upload
+    for k in ("filename", "size_bytes"):
+        if k in base_summary and k not in stable_summary:
+            stable_summary[k] = base_summary[k]
+
+    # Прокидываем sha256 из модели в summary для трассировки
+    if version.source_sha256:
+        stable_summary["source_sha256"] = version.source_sha256
+
+    # При желании сохраняем дополнительные поля, но не полагаемся на них как на часть стабильной схемы
+    if ingestion_result is not None:
+        stable_summary["facts_extraction"] = {
+            "facts_count": getattr(ingestion_result, "facts_count", 0),
+            "needs_review": getattr(ingestion_result, "facts_needs_review", []),
+        }
+        if getattr(ingestion_result, "soa_detected", False):
+            stable_summary["soa"] = {
+                "table_index": getattr(ingestion_result, "soa_table_index", None),
+                "section_path": getattr(ingestion_result, "soa_section_path", None),
+                "confidence": getattr(ingestion_result, "soa_confidence", None),
+                "cell_anchors_created": getattr(ingestion_result, "cell_anchors_created", 0),
+            }
+        if getattr(ingestion_result, "docx_summary", None):
+            stable_summary["docx_summary"] = getattr(ingestion_result, "docx_summary")
+
+    return stable_summary
 
 
 def validate_file_extension(filename: str) -> None:
@@ -105,6 +313,20 @@ async def create_document_version(
     document = await db.get(Document, document_id)
     if not document:
         raise NotFoundError("Document", str(document_id))
+
+    # Логируем, как определяется язык документа:
+    # - document_language имеет дефолт UNKNOWN в схеме, поэтому дополнительно
+    #   смотрим, был ли field передан явно в запросе.
+    try:
+        provided_fields = getattr(payload, "model_fields_set", set())  # pydantic v2
+    except Exception:  # noqa: BLE001
+        provided_fields = set()
+    language_source = "client_payload" if "document_language" in provided_fields else "default_unknown"
+    logger.info(
+        "DocumentVersion: document_language определён "
+        f"(document_id={document_id}, version_label={payload.version_label!r}, "
+        f"document_language={payload.document_language.value}, source={language_source})"
+    )
 
     version = DocumentVersion(
         document_id=document_id,
@@ -193,6 +415,34 @@ async def upload_document_version(
         "size_bytes": stored_file.size_bytes,
     })
 
+    # Автодетект языка на upload: только если язык не был задан явно (UNKNOWN) и это DOCX.
+    # Если язык уже ru/en/mixed — не трогаем.
+    detected_lang: DocumentLanguage | None = None
+    detected_meta: dict[str, Any] | None = None
+    try:
+        file_ext = Path(stored_file.original_filename).suffix.lower()
+    except Exception:  # noqa: BLE001
+        file_ext = ""
+
+    if version.document_language == DocumentLanguage.UNKNOWN and file_ext == ".docx":
+        path = _uri_to_path(stored_file.uri)
+        detected_lang, detected_meta = _detect_language_from_docx(path)
+        if detected_lang != DocumentLanguage.UNKNOWN:
+            version.document_language = detected_lang
+            summary["document_language"] = detected_lang.value
+            summary["document_language_source"] = "auto_detect_upload"
+            summary["document_language_detect"] = detected_meta
+            logger.info(
+                "DocumentVersion: document_language auto-detected on upload "
+                f"(version_id={version_id}, detected={detected_lang.value}, meta={detected_meta})"
+            )
+        else:
+            summary["document_language_detect"] = detected_meta
+            logger.info(
+                "DocumentVersion: document_language auto-detect inconclusive "
+                f"(version_id={version_id}, meta={detected_meta})"
+            )
+
     # Обновляем version
     version.source_file_uri = stored_file.uri
     version.source_sha256 = stored_file.sha256
@@ -214,6 +464,8 @@ async def upload_document_version(
             "ingestion_status": IngestionStatus.UPLOADED.value,
             "filename": stored_file.original_filename,
             "size_bytes": stored_file.size_bytes,
+            "document_language": version.document_language.value,
+            "document_language_source": summary.get("document_language_source"),
         },
     )
     await db.commit()
@@ -312,60 +564,24 @@ async def start_ingestion(
         else:
             final_status = IngestionStatus.READY
         
-        # Формируем summary с counts_by_type и num_sections из БД
-        summary: dict[str, Any] = {
-            "anchors_created": ingestion_result.anchors_created,
-            "chunks_created": ingestion_result.chunks_created,
-            "soa_detected": ingestion_result.soa_detected,
-            "needs_review": ingestion_result.needs_review,
-        }
-        
-        # Добавляем информацию о SoA
-        if ingestion_result.soa_detected:
-            summary["soa"] = {
-                "table_index": ingestion_result.soa_table_index,
-                "section_path": ingestion_result.soa_section_path,
-                "confidence": ingestion_result.soa_confidence,
-                "cell_anchors_created": ingestion_result.cell_anchors_created,
-            }
-        
-        if ingestion_result.warnings:
-            summary["warnings"] = ingestion_result.warnings
-        
-        # Добавляем информацию о заголовках из DocxIngestor (если есть)
-        if ingestion_result.docx_summary:
-            # Копируем диагностику заголовков из docx_summary
-            heading_fields = [
-                "heading_detected_count",
-                "heading_levels_histogram",
-                "heading_detection_mode_counts",
-                "heading_quality",
-            ]
-            for field in heading_fields:
-                if field in ingestion_result.docx_summary:
-                    summary[field] = ingestion_result.docx_summary[field]
-            
-            # Добавляем информацию о маппинге секций
-            if "sections_mapped_count" in ingestion_result.docx_summary:
-                summary["sections_mapped_count"] = ingestion_result.docx_summary["sections_mapped_count"]
-            if "sections_needs_review_count" in ingestion_result.docx_summary:
-                summary["sections_needs_review_count"] = ingestion_result.docx_summary["sections_needs_review_count"]
-            if "mapping_warnings" in ingestion_result.docx_summary:
-                mapping_warnings = ingestion_result.docx_summary["mapping_warnings"]
-                if mapping_warnings:
-                    if "mapping_warnings" not in summary:
-                        summary["mapping_warnings"] = []
-                    summary["mapping_warnings"].extend(mapping_warnings)
-            
-            # Объединяем warnings (если есть в docx_summary)
-            if "warnings" in ingestion_result.docx_summary:
-                docx_warnings = ingestion_result.docx_summary["warnings"]
-                if docx_warnings:
-                    if "warnings" not in summary:
-                        summary["warnings"] = []
-                    summary["warnings"].extend(docx_warnings)
-        
-        # Собираем counts_by_type и num_sections из созданных anchors
+        # Формируем стабильный summary
+        all_warnings: list[str] = []
+        if getattr(ingestion_result, "warnings", None):
+            all_warnings.extend(list(getattr(ingestion_result, "warnings") or []))
+        if getattr(ingestion_result, "docx_summary", None) and isinstance(ingestion_result.docx_summary, dict):
+            docx_warnings = ingestion_result.docx_summary.get("warnings") or []
+            all_warnings.extend(list(docx_warnings))
+
+        summary = await _build_ingestion_summary(
+            db=db,
+            version=version,
+            ingestion_result=ingestion_result,
+            final_status=final_status,
+            warnings=all_warnings,
+            errors=[],
+        )
+
+        # Собираем counts_by_type и num_sections из созданных anchors (доп. поля; не часть стабильной схемы)
         if ingestion_result.anchors_created > 0:
             counts_result = await db.execute(
                 select(
@@ -375,13 +591,10 @@ async def start_ingestion(
                 .where(Anchor.doc_version_id == version_id)
                 .group_by(Anchor.content_type)
             )
-            counts_by_type = {
+            summary["counts_by_type"] = {
                 row.content_type.value: row.count
                 for row in counts_result.all()
             }
-            summary["counts_by_type"] = counts_by_type
-            
-            # Получаем уникальные section_path
             sections_result = await db.execute(
                 select(Anchor.section_path)
                 .where(Anchor.doc_version_id == version_id)
@@ -390,8 +603,7 @@ async def start_ingestion(
             unique_sections = sorted([row.section_path for row in sections_result.all()])
             summary["num_sections"] = len(unique_sections)
             summary["sections"] = unique_sections
-        
-        # Обновляем ingestion_summary_json
+
         version.ingestion_summary_json = summary
         
         # Обновляем статус
@@ -427,10 +639,14 @@ async def start_ingestion(
         # Обработка ошибок: processing -> failed
         error_message = str(e)
         version.ingestion_status = IngestionStatus.FAILED
-        version.ingestion_summary_json = {
-            "error": error_message,
-            "status": "failed",
-        }
+        version.ingestion_summary_json = await _build_ingestion_summary(
+            db=db,
+            version=version,
+            ingestion_result=None,
+            final_status=IngestionStatus.FAILED,
+            warnings=[],
+            errors=[error_message],
+        )
         await db.commit()
         
         # Audit: логируем ошибку

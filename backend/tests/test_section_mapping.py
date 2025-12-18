@@ -723,6 +723,103 @@ class TestSectionMapping:
         assert len(section_map.anchor_ids or []) > 0
 
     @pytest.mark.asyncio
+    async def test_mapping_ru_auto_derives_signals_when_empty(
+        self,
+        db: AsyncSession,
+        test_document: DocumentModel,
+        test_workspace: Workspace,
+    ):
+        """
+        Если retrieval_recipe_json.language.mode=auto и language-aware signals пустые,
+        сервис должен runtime-автогенерировать signals и замаппить секцию (MVP поведение).
+        """
+        version = DocumentVersion(
+            document_id=test_document.id,
+            version_label="v1.0",
+            source_file_uri="file:///test/file.docx",
+            source_sha256="abc123",
+            effective_date=date.today(),
+            ingestion_status=IngestionStatus.READY,
+            document_language=DocumentLanguage.RU,
+        )
+        db.add(version)
+        await db.commit()
+        await db.refresh(version)
+
+        # Контракт v2: lang.ru пустой, но language.mode=auto и fallback_search query_templates заданы.
+        contract = SectionContract(
+            workspace_id=test_workspace.id,
+            doc_type=DocumentType.PROTOCOL,
+            section_key="protocol.endpoints",
+            title="Конечные точки (Endpoints)",
+            required_facts_json={},
+            allowed_sources_json={},
+            retrieval_recipe_json={
+                "version": 2,
+                "language": {"mode": "auto"},
+                "fallback_search": {
+                    "query_templates": {
+                        "ru": ["конечные точки исследования", "первичные конечные точки"],
+                        "en": ["study endpoints", "primary endpoints"],
+                    }
+                },
+                "lang": {"ru": {"must": [], "should": [], "not": []}, "en": {"must": [], "should": [], "not": []}},
+                "regex": {"heading": {"ru": [], "en": []}},
+                "capture": {"strategy": "heading_block", "stop_at_same_or_higher_level": True},
+            },
+            qc_ruleset_json={},
+            citation_policy=CitationPolicy.PER_SENTENCE,
+            version=2,
+            is_active=True,
+        )
+        db.add(contract)
+        await db.commit()
+        await db.refresh(contract)
+
+        anchors = [
+            Anchor(
+                doc_version_id=version.id,
+                anchor_id=f"{version.id}:Конечные точки:hdr:1:hash1",
+                section_path="Конечные точки",
+                content_type=AnchorContentType.HDR,
+                ordinal=1,
+                text_raw="Конечные точки",
+                text_norm="Конечные точки",
+                text_hash="hash1",
+                location_json={"para_index": 1, "style": "Heading 1"},
+            ),
+            Anchor(
+                doc_version_id=version.id,
+                anchor_id=f"{version.id}:Конечные точки:p:1:hash2",
+                section_path="Конечные точки",
+                content_type=AnchorContentType.P,
+                ordinal=1,
+                text_raw="Первичной конечной точкой является ...",
+                text_norm="Первичной конечной точкой является ...",
+                text_hash="hash2",
+                location_json={"para_index": 2, "style": "Normal"},
+            ),
+        ]
+        for a in anchors:
+            db.add(a)
+        await db.commit()
+
+        service = SectionMappingService(db)
+        await service.map_sections(version.id, force=False)
+
+        stmt = select(SectionMap).where(
+            SectionMap.doc_version_id == version.id,
+            SectionMap.section_key == "protocol.endpoints",
+        )
+        result = await db.execute(stmt)
+        section_map = result.scalar_one_or_none()
+
+        assert section_map is not None
+        assert section_map.status == SectionMapStatus.MAPPED
+        assert section_map.confidence >= 0.7
+        assert len(section_map.anchor_ids or []) > 0
+
+    @pytest.mark.asyncio
     async def test_mapping_en_headings(
         self,
         db: AsyncSession,

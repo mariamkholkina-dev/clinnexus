@@ -85,8 +85,21 @@ class SectionMappingQCGate:
             doc_version = result.scalar_one_or_none()
             if doc_version:
                 document_language = doc_version.document_language
+                logger.debug(
+                    "SectionMappingQC: document_language взят из doc_version "
+                    f"(doc_version_id={doc_version_id}, document_language={document_language.value})"
+                )
             else:
                 document_language = DocumentLanguage.UNKNOWN
+                logger.debug(
+                    "SectionMappingQC: document_language UNKNOWN (doc_version не найден) "
+                    f"(doc_version_id={doc_version_id})"
+                )
+        else:
+            logger.debug(
+                "SectionMappingQC: document_language передан явно "
+                f"(doc_version_id={doc_version_id}, document_language={document_language.value})"
+            )
 
         # 1. Проверяем, что heading_anchor_id существует и content_type=hdr
         heading_anchor = None
