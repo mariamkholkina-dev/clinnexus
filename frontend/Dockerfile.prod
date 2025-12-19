@@ -4,7 +4,7 @@
 # Стадия сборки
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app 
 
 # Копирование файлов зависимостей
 COPY package.json package-lock.json* ./
