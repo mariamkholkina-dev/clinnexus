@@ -1,0 +1,93 @@
+{
+  "5": {
+    "doc_type": "protocol",
+    "section_key": "protocol.objectives",
+    "title_ru": "Цели и задачи исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "6": {
+    "doc_type": "protocol",
+    "section_key": "protocol.objectives",
+    "title_ru": "Цели и задачи исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "7": {
+    "doc_type": "protocol",
+    "section_key": "protocol.objectives",
+    "title_ru": "Цели и задачи исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "8": {
+    "doc_type": "protocol",
+    "section_key": "protocol.study_design",
+    "title_ru": "Дизайн и схема исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "9": {
+    "doc_type": "protocol",
+    "section_key": "protocol.eligibility.non_inclusion",
+    "title_ru": "Критерии невключения",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "10": {
+    "doc_type": "protocol",
+    "section_key": "protocol.study_design",
+    "title_ru": "Дизайн и схема исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "11": {
+    "doc_type": "protocol",
+    "section_key": "protocol.procedures_visits",
+    "title_ru": "Процедуры исследования и визиты",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "12": {
+    "doc_type": "protocol",
+    "section_key": "protocol.study_design",
+    "title_ru": "Дизайн и схема исследования",
+    "mapping_mode": "needs_split",
+    "notes": null
+  },
+  "14": {
+    "doc_type": "protocol",
+    "section_key": "protocol.study_design",
+    "title_ru": "Дизайн и схема исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "16": {
+    "doc_type": "protocol",
+    "section_key": "protocol.population",
+    "title_ru": "Описание исследуемой популяции",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "17": {
+    "doc_type": "protocol",
+    "section_key": "protocol.population",
+    "title_ru": "Описание исследуемой популяции",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "18": {
+    "doc_type": "protocol",
+    "section_key": "protocol.eligibility.inclusion",
+    "title_ru": "Критерии включения",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "19": {
+    "doc_type": "protocol",
+    "section_key": "protocol.population",
+    "title_ru": "Описание исследуемой популяции",
+    "mapping_mode": "single",
+    "notes": null
+  }
+}

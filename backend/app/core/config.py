@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     # Включается через env var: MAPPING_DEBUG_LOGS=1
     mapping_debug_logs: bool = False
 
+    # Passport Tuning: пути к файлам кластеров и маппинга
+    passport_tuning_clusters_path: str = "app/data/passport_tuning/clusters.json"
+    passport_tuning_mapping_path: str = "app/data/passport_tuning/cluster_to_section_key.json"
+
     @property
     def sync_database_url(self) -> str:
         return (

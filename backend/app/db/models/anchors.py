@@ -25,7 +25,8 @@ class Vector1536(UserDefinedType):
 
     def bind_processor(self, dialect):  # type: ignore[override]
         """
-        asyncpg/pgvector ожидает литерал вида "[0.1,0.2,...]".
+        Для psycopg 3 с pgvector можно передавать список напрямую.
+        pgvector автоматически конвертирует его в правильный формат.
 
         Важно: `chunks.embedding` = vector(1536) NOT NULL, поэтому здесь также
         валидируем длину.
@@ -39,16 +40,13 @@ class Vector1536(UserDefinedType):
             if len(value) != 1536:
                 raise ValueError(f"Vector1536 ожидает длину 1536, получено: {len(value)}")
 
-            # Формируем pgvector literal: "[0.001234,0.000000,...]"
-            # Используем фиксированную точность для стабильности и компактности.
-            parts = []
-            for x in value:
-                try:
-                    fx = float(x)
-                except Exception as e:  # noqa: BLE001
-                    raise TypeError(f"Vector1536: элемент не float: {x!r}") from e
-                parts.append(f"{fx:.6f}")
-            return "[" + ",".join(parts) + "]"
+            # Для psycopg 3 с зарегистрированными типами pgvector
+            # можно передавать список напрямую - он будет автоматически конвертирован
+            # Проверяем, что все элементы - float
+            try:
+                return [float(x) for x in value]
+            except (ValueError, TypeError) as e:
+                raise TypeError(f"Vector1536: элемент не float: {e}") from e
 
         return process
 

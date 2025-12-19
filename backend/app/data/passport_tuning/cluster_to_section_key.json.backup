@@ -1,0 +1,100 @@
+{
+  "0": {
+    "doc_type": "protocol",
+    "section_key": "protocol.references",
+    "title_ru": "Ссылки и литература",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "1": {
+    "doc_type": "protocol",
+    "section_key": "protocol.legal_aspects",
+    "title_ru": "Юридические аспекты",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "2": {
+    "doc_type": "protocol",
+    "section_key": "protocol.document_storage",
+    "title_ru": "Хранение документации",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "3": {
+    "doc_type": "protocol",
+    "section_key": "protocol.study_plan",
+    "title_ru": "План исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "4": {
+    "doc_type": "protocol",
+    "section_key": "protocol.informed_consent",
+    "title_ru": "Информированное согласие",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "5": {
+    "doc_type": "protocol",
+    "section_key": "protocol.ethics",
+    "title_ru": "Этические аспекты",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "6": {
+    "doc_type": "protocol",
+    "section_key": "protocol.quality_assurance",
+    "title_ru": "Обеспечение качества",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "7": {
+    "doc_type": "protocol",
+    "section_key": "protocol.document_storage",
+    "title_ru": "Хранение документации",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "8": {
+    "doc_type": "protocol",
+    "section_key": "protocol.statistics",
+    "title_ru": "Статистические методы",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "9": {
+    "doc_type": "protocol",
+    "section_key": "protocol.statistics",
+    "title_ru": "Статистические методы",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "10": {
+    "doc_type": "protocol",
+    "section_key": "protocol.statistics",
+    "title_ru": "Статистические методы",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "11": {
+    "doc_type": "protocol",
+    "section_key": "protocol.statistics",
+    "title_ru": "Статистические методы",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "13": {
+    "doc_type": "protocol",
+    "section_key": "protocol.safety_assessment",
+    "title_ru": "Оценка безопасности",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "14": {
+    "doc_type": "protocol",
+    "section_key": "protocol.efficacy_assessment",
+    "title_ru": "Оценка эффективности",
+    "mapping_mode": "single",
+    "notes": null
+  }
+}

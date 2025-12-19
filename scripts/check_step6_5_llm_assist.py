@@ -4,8 +4,10 @@
 import argparse
 import json
 import os
+import re
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -76,6 +78,35 @@ def poll_ingest(api_base: str, version_id: str, timeout_sec: int = 180) -> Dict[
         time.sleep(1)
 
 
+def extract_version_from_filename(filename: str) -> Optional[str]:
+    """Извлекает номер версии из имени файла. Возвращает None, если не найдено."""
+    # Паттерны для поиска версий:
+    # - "Версия 1.0", "Версия 2.1" и т.д.
+    # - "v1.0", "v2.1" и т.д.
+    # - "Am1", "Am2", "Amendment 1", "Amendment 2" и т.д.
+    # - "rev1", "rev2", "revision 1" и т.д.
+    
+    patterns = [
+        r'[Вв]ерсия\s+(\d+\.?\d*)',  # "Версия 1.0" или "Версия 2"
+        r'\bv(\d+\.?\d*)\b',  # "v1.0" или "v2"
+        r'\bAm(\d+)\b',  # "Am1", "Am2"
+        r'[Aa]mendment\s+(\d+)',  # "Amendment 1"
+        r'\brev(\d+)\b',  # "rev1", "rev2"
+        r'[Rr]evision\s+(\d+)',  # "Revision 1"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, filename, re.IGNORECASE)
+        if match:
+            version_num = match.group(1)
+            # Нормализуем формат: если нет точки, добавляем ".0"
+            if '.' not in version_num:
+                return f"v{version_num}.0"
+            return f"v{version_num}"
+    
+    return None
+
+
 def create_study_document_version(api_base: str, workspace_id: str) -> Tuple[str, str, str]:
     # 1) study
     study_body = {
@@ -101,6 +132,46 @@ def create_study_document_version(api_base: str, workspace_id: str) -> Tuple[str
     print(f"version_id={version_id}")
 
     return study_id, document_id, version_id
+
+
+def create_study_for_subdir(api_base: str, workspace_id: str, subdir_name: str) -> str:
+    """Создаёт study для подкаталога. Возвращает study_id."""
+    # Генерируем study_code из имени каталога (убираем недопустимые символы)
+    study_code = re.sub(r'[^\w\-_]', '_', subdir_name)[:50]  # Ограничиваем длину
+    study_code = f"{study_code}-{int(time.time())}"
+    
+    study_body = {
+        "workspace_id": workspace_id,
+        "study_code": study_code,
+        "title": subdir_name,
+        "status": "active",
+    }
+    study = http_json("POST", f"{api_base}/api/studies", json_body=study_body, timeout=30)
+    study_id = study["id"]
+    print(f"  Создан study: study_id={study_id}, title={subdir_name}")
+    return study_id
+
+
+def create_document_for_subdir(api_base: str, study_id: str, subdir_name: str) -> str:
+    """Создаёт документ для подкаталога. Возвращает document_id."""
+    doc_body = {
+        "doc_type": "protocol",
+        "title": subdir_name,
+        "lifecycle_status": "draft"
+    }
+    doc = http_json("POST", f"{api_base}/api/studies/{study_id}/documents", json_body=doc_body, timeout=30)
+    document_id = doc["id"]
+    print(f"  Создан документ: document_id={document_id}, title={subdir_name}")
+    return document_id
+
+
+def create_document_version(api_base: str, document_id: str, version_label: str) -> str:
+    """Создаёт версию документа. Возвращает version_id."""
+    ver_body = {"version_label": version_label}
+    ver = http_json("POST", f"{api_base}/api/documents/{document_id}/versions", json_body=ver_body, timeout=30)
+    version_id = ver["id"]
+    print(f"  Создана версия: version_id={version_id}, label={version_label}")
+    return version_id
 
 
 def get_section_maps(api_base: str, version_id: str) -> List[Dict[str, Any]]:
@@ -217,26 +288,61 @@ def find_doc_files(script_dir: Path) -> List[Path]:
     return sorted(doc_files)
 
 
+def find_doc_files_by_subdir(protocols_dir: Path) -> Dict[str, List[Path]]:
+    """Находит все .doc и .docx файлы, сгруппированные по подкаталогам.
+    Возвращает словарь: {подкаталог: [список файлов]}"""
+    files_by_subdir = defaultdict(list)
+    
+    if not protocols_dir.exists():
+        return files_by_subdir
+    
+    for subdir in protocols_dir.iterdir():
+        if not subdir.is_dir():
+            continue
+        
+        subdir_name = subdir.name
+        for ext in [".doc", ".docx"]:
+            for doc_file in subdir.glob(f"*{ext}"):
+                if doc_file.is_file():
+                    files_by_subdir[subdir_name].append(doc_file)
+        
+        # Сортируем файлы в каждом подкаталоге по имени
+        if subdir_name in files_by_subdir:
+            files_by_subdir[subdir_name].sort()
+    
+    return dict(files_by_subdir)
+
+
 def process_single_file(
     api_base: str,
     workspace_id: str,
+    study_id: str,
+    document_id: str,
     docx_path: Path,
+    version_label: str,
     section_keys: List[str],
     apply: bool,
     max_candidates: int,
     allow_visual: bool,
     timeout: int,
     skip_llm: bool,
+    version_id: Optional[str] = None,
 ) -> Tuple[str, bool]:
-    """Обрабатывает один DOC/DOCX файл. Возвращает (version_id, success)."""
+    """Обрабатывает один DOC/DOCX файл как версию существующего документа.
+    Если version_id не указан, создаёт новую версию.
+    Возвращает (version_id, success)."""
     print(f"\n{'='*80}")
     print(f"Обработка файла: {docx_path.name}")
+    print(f"Версия: {version_label}")
     print(f"{'='*80}")
     
     try:
-        # Создаём study/document/version
-        print("Creating study/document/version...")
-        _, _, version_id = create_study_document_version(api_base, workspace_id)
+        # Создаём версию для существующего документа, если не указана
+        if version_id is None:
+            print(f"Creating version for document_id={document_id}...")
+            version_id = create_document_version(api_base, document_id, version_label)
+        else:
+            print(f"Using existing version_id={version_id}")
 
         # Загружаем файл
         print("Uploading DOCX...")
@@ -492,43 +598,93 @@ def main() -> None:
     assert_true(len(workspace_id) == 36, f"WorkspaceId looks wrong: {workspace_id}")
 
     script_dir = Path(__file__).parent.absolute()
+    protocols_dir = script_dir / "протоколы"
     
     # Определяем список файлов для обработки
     docx_path_arg = args.docx.strip()
     if docx_path_arg:
-        # Обрабатываем только указанный файл
+        # Обрабатываем только указанный файл (старая логика для обратной совместимости)
         docx_path = Path(docx_path_arg)
         if not docx_path.is_absolute():
             docx_path = script_dir / docx_path
         assert_true(docx_path.exists(), f"Файл не найден: {docx_path}")
         assert_true(docx_path.suffix.lower() in [".doc", ".docx"], f"Ожидается файл .doc или .docx: {docx_path}")
-        files_to_process = [docx_path]
-    else:
-        # Обрабатываем все DOC/DOCX файлы в каталоге скрипта и поддиректориях
-        files_to_process = find_doc_files(script_dir)
-        if not files_to_process:
-            die(f"Не найдено файлов .doc или .docx в каталоге и поддиректориях: {script_dir}")
-        print(f"Найдено {len(files_to_process)} файл(ов) для обработки (рекурсивный поиск):")
-        for f in files_to_process:
-            # Показываем относительный путь от каталога скрипта
-            rel_path = f.relative_to(script_dir)
-            print(f"  - {rel_path}")
-
-    # Обрабатываем каждый файл
-    results = []
-    for docx_path in files_to_process:
+        
+        # Создаём study/document/version для одного файла
+        print("Creating study/document/version...")
+        study_id, document_id, version_id = create_study_document_version(api_base, workspace_id)
+        
+        # Используем уже созданную версию
         version_id, success = process_single_file(
             api_base=api_base,
             workspace_id=workspace_id,
+            study_id=study_id,
+            document_id=document_id,
             docx_path=docx_path,
+            version_label="v1.0",
             section_keys=section_keys,
             apply=args.apply,
             max_candidates=args.max_candidates,
             allow_visual=args.allow_visual,
             timeout=args.timeout,
             skip_llm=args.skip_llm,
+            version_id=version_id,  # Передаём уже созданную версию
         )
-        results.append((docx_path.name, version_id, success))
+        results = [(docx_path.name, version_id, success)]
+    else:
+        # Обрабатываем все подкаталоги в каталоге "протоколы"
+        if not protocols_dir.exists():
+            die(f"Каталог 'протоколы' не найден: {protocols_dir}")
+        
+        files_by_subdir = find_doc_files_by_subdir(protocols_dir)
+        if not files_by_subdir:
+            die(f"Не найдено файлов .doc или .docx в подкаталогах: {protocols_dir}")
+        
+        print(f"Найдено {len(files_by_subdir)} подкаталог(ов) с файлами:")
+        total_files = sum(len(files) for files in files_by_subdir.values())
+        print(f"Всего файлов: {total_files}")
+        for subdir_name, files in files_by_subdir.items():
+            print(f"  {subdir_name}: {len(files)} файл(ов)")
+        
+        # Обрабатываем каждый подкаталог
+        results = []
+        for subdir_name, files in sorted(files_by_subdir.items()):
+            print(f"\n{'#'*80}")
+            print(f"Обработка подкаталога: {subdir_name}")
+            print(f"Файлов в подкаталоге: {len(files)}")
+            print(f"{'#'*80}")
+            
+            # Создаём study для этого подкаталога
+            study_id = create_study_for_subdir(api_base, workspace_id, subdir_name)
+            
+            # Создаём один документ для этого подкаталога
+            document_id = create_document_for_subdir(api_base, study_id, subdir_name)
+            
+            # Обрабатываем каждый файл как версию этого документа
+            for idx, docx_path in enumerate(files, start=1):
+                # Пытаемся извлечь версию из имени файла
+                version_label = extract_version_from_filename(docx_path.name)
+                if not version_label:
+                    # Если не удалось извлечь, используем порядковый номер
+                    version_label = f"v{idx}.0"
+                
+                version_id, success = process_single_file(
+                    api_base=api_base,
+                    workspace_id=workspace_id,
+                    study_id=study_id,
+                    document_id=document_id,
+                    docx_path=docx_path,
+                    version_label=version_label,
+                    section_keys=section_keys,
+                    apply=args.apply,
+                    max_candidates=args.max_candidates,
+                    allow_visual=args.allow_visual,
+                    timeout=args.timeout,
+                    skip_llm=args.skip_llm,
+                )
+                # Сохраняем путь относительно каталога протоколы для лучшей читаемости
+                rel_path = docx_path.relative_to(protocols_dir)
+                results.append((str(rel_path), version_id, success))
 
     # Итоговая сводка
     print(f"\n{'='*80}")

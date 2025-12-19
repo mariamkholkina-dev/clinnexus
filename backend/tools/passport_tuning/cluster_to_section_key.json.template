@@ -1,0 +1,45 @@
+{
+  "0": {
+    "doc_type": "protocol",
+    "section_key": "protocol.references",
+    "title_ru": "Список литературы",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "1": {
+    "doc_type": "protocol",
+    "section_key": "protocol.funding",
+    "title_ru": "Финансирование и страхование исследования",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "2": {
+    "doc_type": "protocol",
+    "section_key": "protocol.data_management.source_documents",
+    "title_ru": "Первичная документация",
+    "mapping_mode": "single",
+    "notes": null
+  },
+  "3": {
+    "doc_type": "protocol",
+    "section_key": "protocol.objectives",
+    "title_ru": "Цели исследования",
+    "mapping_mode": "ambiguous",
+    "notes": "Неоднозначное соответствие, требуется уточнение"
+  },
+  "4": {
+    "doc_type": "other",
+    "section_key": "",
+    "title_ru": null,
+    "mapping_mode": "skip",
+    "notes": "Кластер пропущен, не требует маппинга"
+  },
+  "5": {
+    "doc_type": "protocol",
+    "section_key": "protocol.methods",
+    "title_ru": "Методы исследования",
+    "mapping_mode": "needs_split",
+    "notes": "Рекомендуется разделить кластер на несколько секций"
+  }
+}
+

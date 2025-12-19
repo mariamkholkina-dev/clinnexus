@@ -1,0 +1,68 @@
+# Production Dockerfile для ClinNexus Frontend
+# Многостадийная сборка для оптимизации размера образа
+
+# Стадия сборки
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Копирование файлов зависимостей
+COPY package.json package-lock.json* ./
+
+# Установка всех зависимостей (включая dev для сборки)
+RUN npm ci
+
+# Копирование исходного кода
+COPY . .
+
+# Переменная окружения для production сборки
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
+
+# Сборка приложения
+RUN npm run build
+
+# Production стадия
+FROM node:20-alpine AS runner
+
+# Установка wget для health check
+RUN apk add --no-cache wget
+
+WORKDIR /app
+
+# Создание непривилегированного пользователя
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Копирование package.json для production зависимостей
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package-lock.json* ./package-lock.json
+
+# Установка только production зависимостей
+RUN npm ci --only=production && npm cache clean --force
+
+# Копирование собранного приложения
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+
+# Установка прав доступа
+RUN chown -R nextjs:nodejs /app
+
+# Переключение на непривилегированного пользователя
+USER nextjs
+
+# Переменные окружения
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME="0.0.0.0"
+
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:3000 || exit 1
+
+# Запуск production сервера
+CMD ["npm", "start"]
