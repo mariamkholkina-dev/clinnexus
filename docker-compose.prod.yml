@@ -71,6 +71,8 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost/api}
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      # Настройка для работы за прокси - Next.js будет использовать относительные пути
+      - HOSTNAME=0.0.0.0
     depends_on:
       backend:
         condition: service_healthy
