@@ -15,6 +15,9 @@ RUN npm ci
 # Копирование исходного кода
 COPY . .
 
+# Создание public директории, если её нет (Next.js может не создавать её)
+RUN mkdir -p ./public || true
+
 # Переменная окружения для production сборки
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
@@ -43,6 +46,7 @@ RUN npm ci --only=production && npm cache clean --force
 
 # Копирование собранного приложения
 COPY --from=builder /app/.next ./.next
+# Копирование public директории (создана в builder стадии, даже если пустая)
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
