@@ -5,11 +5,14 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_db
 from app.core.config import settings
 from app.core.logging import logger
+from app.db.enums import DocumentType
 from app.schemas.passport_tuning import (
     Cluster,
     ClustersResponse,
@@ -17,6 +20,7 @@ from app.schemas.passport_tuning import (
     MappingMode,
     MappingResponse,
 )
+from app.services.taxonomy_service import TaxonomyService
 
 router = APIRouter(tags=["passport-tuning"])
 
@@ -167,11 +171,39 @@ async def get_mapping() -> MappingResponse:
         )
 
 
+@router.get("/sections")
+async def get_sections(
+    doc_type: DocumentType = Query(..., description="Тип документа"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Возвращает дерево taxonomy для указанного doc_type.
+    
+    Включает:
+    - nodes: иерархия секций (parent->child)
+    - aliases: алиасы (alias -> canonical)
+    - related: связанные секции (граф конфликтов)
+    """
+    taxonomy_service = TaxonomyService(db)
+    try:
+        tree = await taxonomy_service.get_tree(doc_type)
+        return tree
+    except Exception as e:
+        logger.error(f"Ошибка при получении taxonomy для {doc_type.value}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении taxonomy: {e}",
+        )
+
+
 @router.post("/mapping", status_code=status.HTTP_200_OK)
-async def save_mapping(mapping_data: dict[str, Any]) -> dict[str, Any]:
+async def save_mapping(
+    mapping_data: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
     """Сохраняет полный mapping на диск.
 
     Валидирует все элементы и сохраняет атомарно (tmp -> rename).
+    Применяет нормализацию section_key через taxonomy (alias resolution).
     """
     mapping_file = get_mapping_file_path()
 
@@ -182,6 +214,8 @@ async def save_mapping(mapping_data: dict[str, Any]) -> dict[str, Any]:
     validated_mapping: dict[str, ClusterMappingItem] = {}
     validation_errors: list[dict[str, str]] = []
 
+    taxonomy_service = TaxonomyService(db)
+
     for cluster_id, item_data in mapping_data.items():
         try:
             # Добавляем дефолты для mapping_mode, если не указан
@@ -189,6 +223,21 @@ async def save_mapping(mapping_data: dict[str, Any]) -> dict[str, Any]:
                 item_data["mapping_mode"] = MappingMode.SINGLE.value
 
             item = ClusterMappingItem.model_validate(item_data)
+            
+            # Нормализуем section_key через taxonomy (resolve alias)
+            if item.section_key and item.doc_type:
+                original_key = item.section_key
+                canonical_key = await taxonomy_service.normalize_section_key(
+                    item.doc_type, original_key
+                )
+                if canonical_key != original_key:
+                    # Обновляем на canonical, сохраняем original в notes если нужно
+                    item.section_key = canonical_key
+                    if item.notes:
+                        item.notes = f"[alias: {original_key}] {item.notes}"
+                    else:
+                        item.notes = f"[alias: {original_key}]"
+            
             validated_mapping[str(cluster_id)] = item
 
         except Exception as e:
@@ -366,5 +415,29 @@ async def get_mapping_for_autotune(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при чтении mapping файла: {e}",
+        )
+
+
+@router.get("/sections")
+async def get_sections(
+    doc_type: DocumentType = Query(..., description="Тип документа"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Возвращает дерево taxonomy для указанного doc_type.
+    
+    Включает:
+    - nodes: иерархия секций (parent->child)
+    - aliases: алиасы (alias -> canonical)
+    - related: связанные секции (граф конфликтов)
+    """
+    taxonomy_service = TaxonomyService(db)
+    try:
+        tree = await taxonomy_service.get_tree(doc_type)
+        return tree
+    except Exception as e:
+        logger.error(f"Ошибка при получении taxonomy для {doc_type.value}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении taxonomy: {e}",
         )
 

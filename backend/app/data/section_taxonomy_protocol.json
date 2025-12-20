@@ -1,0 +1,446 @@
+{
+  "doc_type": "protocol",
+  "nodes": [
+    {
+      "section_key": "protocol.study_design",
+      "title_ru": "Дизайн исследования",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"],
+        "min_anchors": 5
+      }
+    },
+    {
+      "section_key": "protocol.study_plan",
+      "title_ru": "План исследования",
+      "parent": "protocol.study_design",
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.schedule_of_activities",
+      "title_ru": "График активности (SoA)",
+      "parent": "protocol.study_plan",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["tbl", "cell"],
+        "min_cell_anchors": 10
+      }
+    },
+    {
+      "section_key": "protocol.procedures_visits",
+      "title_ru": "Процедуры и визиты",
+      "parent": "protocol.study_plan",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li", "tbl"]
+      }
+    },
+    {
+      "section_key": "protocol.endpoints",
+      "title_ru": "Конечные точки",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.efficacy_assessment",
+      "title_ru": "Оценка эффективности",
+      "parent": "protocol.endpoints",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.safety_assessment",
+      "title_ru": "Оценка безопасности",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.safety.ae_reporting",
+      "title_ru": "Сообщение о нежелательных явлениях",
+      "parent": "protocol.safety_assessment",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.eligibility",
+      "title_ru": "Критерии отбора",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.eligibility.inclusion",
+      "title_ru": "Критерии включения",
+      "parent": "protocol.eligibility",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["li"]
+      }
+    },
+    {
+      "section_key": "protocol.eligibility.exclusion",
+      "title_ru": "Критерии исключения",
+      "parent": "protocol.eligibility",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["li"]
+      }
+    },
+    {
+      "section_key": "protocol.eligibility.non_inclusion",
+      "title_ru": "Критерии невключения",
+      "parent": "protocol.eligibility",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["li"]
+      }
+    },
+    {
+      "section_key": "protocol.population",
+      "title_ru": "Популяция исследования",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.objectives",
+      "title_ru": "Цели исследования",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.background_rationale",
+      "title_ru": "Обоснование и предпосылки",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.synopsis",
+      "title_ru": "Краткое изложение",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.dosing_administration",
+      "title_ru": "Дозирование и введение",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.ip_handling",
+      "title_ru": "Обращение с исследуемым препаратом",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.concomitant_therapy",
+      "title_ru": "Сопутствующая терапия",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.contraception",
+      "title_ru": "Контрацепция",
+      "parent": null,
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.pregnancy",
+      "title_ru": "Беременность",
+      "parent": null,
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.pk",
+      "title_ru": "Фармакокинетика",
+      "parent": null,
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.bioanalytical_method",
+      "title_ru": "Биоаналитический метод",
+      "parent": null,
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.sample_handling",
+      "title_ru": "Обращение с образцами",
+      "parent": null,
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.statistics",
+      "title_ru": "Статистика",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.sample_size",
+      "title_ru": "Размер выборки",
+      "parent": "protocol.statistics",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "tbl"]
+      }
+    },
+    {
+      "section_key": "protocol.interim_analysis",
+      "title_ru": "Промежуточный анализ",
+      "parent": "protocol.statistics",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.stat_plan_deviations",
+      "title_ru": "Отклонения от статистического плана",
+      "parent": "protocol.statistics",
+      "is_narrow": true,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.quality_assurance",
+      "title_ru": "Обеспечение качества",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.monitoring",
+      "title_ru": "Мониторинг",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.data_capture_crf",
+      "title_ru": "Сбор данных и CRF",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.ethics",
+      "title_ru": "Этика",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.informed_consent",
+      "title_ru": "Информированное согласие",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.legal_aspects",
+      "title_ru": "Правовые аспекты",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.document_storage",
+      "title_ru": "Хранение документов",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.publication_plan",
+      "title_ru": "План публикации",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    },
+    {
+      "section_key": "protocol.regulatory_docs",
+      "title_ru": "Регуляторные документы",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.references",
+      "title_ru": "Ссылки",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.appendices",
+      "title_ru": "Приложения",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li", "tbl"]
+      }
+    },
+    {
+      "section_key": "protocol.discontinuation",
+      "title_ru": "Прекращение исследования",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.subject_withdrawal_followup",
+      "title_ru": "Выбытие субъекта и последующее наблюдение",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.subject_replacement",
+      "title_ru": "Замена субъекта",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.randomization_code_handling",
+      "title_ru": "Обращение с кодами рандомизации",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.ip_storage_accountability",
+      "title_ru": "Хранение и учетность ИП",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.ip_labeling",
+      "title_ru": "Маркировка ИП",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p", "li"]
+      }
+    },
+    {
+      "section_key": "protocol.title_page",
+      "title_ru": "Титульная страница",
+      "parent": null,
+      "is_narrow": false,
+      "expected_content": {
+        "prefer": ["p"]
+      }
+    }
+  ],
+  "aliases": [
+    {
+      "alias_key": "protocol.soa",
+      "canonical_key": "protocol.schedule_of_activities",
+      "reason": "merge"
+    }
+  ],
+  "related": [
+    {
+      "a": "protocol.endpoints",
+      "b": "protocol.efficacy_assessment",
+      "reason": "часто смешиваются"
+    },
+    {
+      "a": "protocol.study_plan",
+      "b": "protocol.procedures_visits",
+      "reason": "часто смешиваются"
+    },
+    {
+      "a": "protocol.safety_assessment",
+      "b": "protocol.safety.ae_reporting",
+      "reason": "часто смешиваются"
+    }
+  ]
+}
+

@@ -11,32 +11,6 @@ services:
     volumes:
       - db_data:/var/lib/postgresql
 
-  backend:
-    build: ./backend
-    environment:
-      - APP_ENV=dev
-      - APP_HOST=0.0.0.0
-      - APP_PORT=8000
-      - LOG_LEVEL=info
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=clinnexus
-      - DB_USER=clinnexus
-      - DB_PASSWORD=clinnexus
-    depends_on:
-      - db
-    ports:
-      - "8000:8000"
-
-  frontend:
-    build: ./frontend
-    env_file:
-      - ./frontend/.env
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
-
 volumes:
   db_data:
 

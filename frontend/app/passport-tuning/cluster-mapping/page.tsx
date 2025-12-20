@@ -175,6 +175,32 @@ function ClusterMappingContent() {
     stats: true,
   })
 
+  // Taxonomy state
+  type TaxonomyNode = {
+    section_key: string
+    title_ru: string
+    parent_section_key: string | null
+    is_narrow: boolean
+    expected_content?: any
+  }
+  type TaxonomyAlias = {
+    alias_key: string
+    canonical_key: string
+    reason?: string
+  }
+  type TaxonomyRelated = {
+    a_section_key: string
+    b_section_key: string
+    reason?: string
+  }
+  type TaxonomyData = {
+    nodes: TaxonomyNode[]
+    aliases: TaxonomyAlias[]
+    related: TaxonomyRelated[]
+  }
+  const [taxonomyData, setTaxonomyData] = useState<TaxonomyData | null>(null)
+  const [taxonomyLoading, setTaxonomyLoading] = useState(false)
+
   // Mobile tabs state
   const [mobileTab, setMobileTab] = useState<"clusters" | "details" | "mapping">("clusters")
 
@@ -314,6 +340,30 @@ function ClusterMappingContent() {
   useEffect(() => {
     loadMapping()
   }, [loadMapping])
+
+  // Load taxonomy when docType changes
+  const loadTaxonomy = useCallback(async (docType: DocType) => {
+    try {
+      setTaxonomyLoading(true)
+      const response = await fetch(`${API_BASE_URL}/passport-tuning/sections?doc_type=${docType}`)
+      if (!response.ok) {
+        throw new Error("Ошибка загрузки taxonomy")
+      }
+      const data = await response.json()
+      setTaxonomyData(data)
+    } catch (err) {
+      console.error("Ошибка загрузки taxonomy:", err)
+      setTaxonomyData(null)
+    } finally {
+      setTaxonomyLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (docType) {
+      loadTaxonomy(docType)
+    }
+  }, [docType, loadTaxonomy])
 
   // Initialize from URL
   useEffect(() => {
@@ -567,7 +617,7 @@ function ClusterMappingContent() {
 
           <div className="w-full min-h-[calc(100vh-200px)]">
             <div className="w-full px-4 md:px-6 lg:px-8 xl:px-12">
-              <div className="w-full grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-[320px_minmax(0,1fr)_420px] xl:grid-cols-[360px_minmax(0,1fr)_460px] 2xl:grid-cols-[400px_minmax(0,1fr)_500px] h-full">
+              <div className="w-full grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-[320px_minmax(0,1fr)_360px_420px] xl:grid-cols-[360px_minmax(0,1fr)_400px_460px] 2xl:grid-cols-[400px_minmax(0,1fr)_440px_500px] h-full">
               {/* Left Column: Cluster List */}
               <Card className={`rounded-xl shadow-sm flex flex-col min-h-0 min-w-0 ${mobileTab !== "clusters" ? "hidden" : ""} lg:flex md:col-span-1`}>
                 <CardHeader className="pb-3 flex-shrink-0">
@@ -867,6 +917,282 @@ function ClusterMappingContent() {
                 </CardContent>
               </Card>
 
+              {/* Middle Column: Context and Recommendations */}
+              <Card className="rounded-xl shadow-sm flex flex-col min-h-0 min-w-0 hidden lg:flex">
+                <CardHeader className="flex-shrink-0 pb-3">
+                  <CardTitle className="text-lg">Контекст и рекомендации</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 min-h-0 min-w-0 flex flex-col px-4 pb-0">
+                  <ScrollArea className="flex-1 pr-2 min-w-0">
+                    <div className="space-y-4 pb-2">
+                      {/* Каноническая секция + Родитель */}
+                      {sectionKey && taxonomyData && (() => {
+                        const currentNode = taxonomyData.nodes.find((n) => n.section_key === sectionKey)
+                        const alias = taxonomyData.aliases.find((a) => a.alias_key === sectionKey)
+                        const canonicalKey = alias ? alias.canonical_key : sectionKey
+                        const canonicalNode = taxonomyData.nodes.find((n) => n.section_key === canonicalKey)
+                        const node = canonicalNode || currentNode
+                        
+                        if (!node) return null
+
+                        const parent = node.parent_section_key
+                          ? taxonomyData.nodes.find((n) => n.section_key === node.parent_section_key)
+                          : null
+
+                        return (
+                          <div className="space-y-2">
+                            <h3 className="text-sm font-medium">Каноническая секция</h3>
+                            {/* Alias hint */}
+                            {alias && (
+                              <Alert className="border-blue-200 bg-blue-50 text-blue-900 dark:bg-blue-950/50 dark:text-blue-100">
+                                <Info className="h-4 w-4" />
+                                <AlertDescription className="text-xs">
+                                  Алиас: <code className="font-mono">{alias.alias_key}</code> → будет сохранено как{" "}
+                                  <code className="font-mono">{alias.canonical_key}</code>
+                                </AlertDescription>
+                              </Alert>
+                            )}
+
+                            {/* Canonical section */}
+                            <div className="rounded-lg border bg-muted/30 p-2">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-medium">Каноническая секция:</span>
+                                {node.is_narrow && (
+                                  <Badge variant="secondary" className="h-4 text-[10px] px-1 bg-purple-100 text-purple-800">
+                                    узкая
+                                  </Badge>
+                                )}
+                              </div>
+                              <code className="text-xs font-mono">{canonicalKey}</code>
+                              <p className="text-xs text-muted-foreground mt-1">{node.title_ru}</p>
+                            </div>
+
+                            {/* Parent */}
+                            {parent && (
+                              <div className="rounded-lg border bg-muted/30 p-2">
+                                <span className="text-xs font-medium">Родитель:</span>
+                                <div className="mt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-xs"
+                                    onClick={() => {
+                                      setSectionKey(parent.section_key)
+                                      const parentTitle = taxonomyData.nodes.find((n) => n.section_key === parent.section_key)?.title_ru
+                                      if (parentTitle) setTitleRu(parentTitle)
+                                    }}
+                                  >
+                                    {parent.section_key}
+                                  </Button>
+                                  <p className="text-xs text-muted-foreground">{parent.title_ru}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Warning about narrow sections */}
+                            {!node.is_narrow && (
+                              (() => {
+                                const narrowCandidates = [
+                                  ...(selectedCluster?.candidate_section_1 ? [selectedCluster.candidate_section_1] : []),
+                                  ...(selectedCluster?.candidate_section_2 ? [selectedCluster.candidate_section_2] : []),
+                                  ...(selectedCluster?.candidate_section_3 ? [selectedCluster.candidate_section_3] : []),
+                                ]
+                                  .map((c) => taxonomyData.nodes.find((n) => n.section_key === c.section_key))
+                                  .filter((n): n is TaxonomyNode => n !== undefined && n.is_narrow)
+
+                                const narrowChildren = taxonomyData.nodes.filter(
+                                  (n) => n.parent_section_key === canonicalKey && n.is_narrow
+                                )
+
+                                const related = taxonomyData.related
+                                  .filter((r) => r.a_section_key === canonicalKey || r.b_section_key === canonicalKey)
+                                  .map((r) => {
+                                    const relatedKey = r.a_section_key === canonicalKey ? r.b_section_key : r.a_section_key
+                                    return taxonomyData.nodes.find((n) => n.section_key === relatedKey)
+                                  })
+                                  .filter((n): n is TaxonomyNode => n !== undefined)
+
+                                const narrowRelated = related.filter((r) => r.is_narrow)
+
+                                const allNarrow = [...narrowCandidates, ...narrowChildren, ...narrowRelated]
+                                const closeNarrow = allNarrow.filter((n) => {
+                                  if (!selectedCluster) return false
+                                  const candidate = [
+                                    selectedCluster.candidate_section_1,
+                                    selectedCluster.candidate_section_2,
+                                    selectedCluster.candidate_section_3,
+                                  ].find((c) => c?.section_key === n.section_key)
+                                  if (!candidate) return false
+                                  const topScore = selectedCluster.candidate_section_1?.score || 0
+                                  return Math.abs(candidate.score - topScore) < 0.10
+                                })
+
+                                if (closeNarrow.length > 0) {
+                                  return (
+                                    <Alert className="border-yellow-200 bg-yellow-50 text-yellow-900 dark:bg-yellow-950/50 dark:text-yellow-100">
+                                      <AlertCircle className="h-4 w-4" />
+                                      <AlertDescription className="text-xs">
+                                        Возможно лучше выбрать узкую секцию:{" "}
+                                        {closeNarrow.map((n, i) => (
+                                          <span key={n.section_key}>
+                                            {i > 0 && ", "}
+                                            <code className="font-mono">{n.section_key}</code>
+                                          </span>
+                                        ))}
+                                      </AlertDescription>
+                                    </Alert>
+                                  )
+                                }
+                                return null
+                              })()
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                        {/* Recommendations */}
+                        {selectedCluster && (selectedCluster.candidate_section_1 ||
+                          selectedCluster.candidate_section_2 ||
+                          selectedCluster.candidate_section_3) && (
+                          <div className="space-y-1.5 border-t pt-4">
+                            <h3 className="text-sm font-medium">Рекомендуемые секции</h3>
+                            <div className="space-y-1.5">
+                              {[
+                                selectedCluster.candidate_section_1,
+                                selectedCluster.candidate_section_2,
+                                selectedCluster.candidate_section_3,
+                              ].map(
+                                (candidate, idx) =>
+                                  candidate && (
+                                    <div
+                                      key={idx}
+                                      className="rounded-lg border border-muted bg-muted/20 p-2 space-y-1.5"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 space-y-1 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className="h-5 text-xs shrink-0">
+                                              {idx + 1}
+                                            </Badge>
+                                            <code className="text-xs font-mono break-all">{candidate.section_key}</code>
+                                            {taxonomyData?.nodes.find((n) => n.section_key === candidate.section_key)?.is_narrow && (
+                                              <Badge variant="secondary" className="h-4 text-[10px] px-1 bg-purple-100 text-purple-800">
+                                                узкая
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2">
+                                            {candidate.title_ru}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            Score: {candidate.score.toFixed(2)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleSelectCandidate(candidate)}
+                                        className="w-full h-8 text-xs"
+                                      >
+                                        Выбрать
+                                      </Button>
+                                    </div>
+                                  ),
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                      {/* Связанные секции */}
+                      {sectionKey && taxonomyData && (() => {
+                        const currentNode = taxonomyData.nodes.find((n) => n.section_key === sectionKey)
+                        const alias = taxonomyData.aliases.find((a) => a.alias_key === sectionKey)
+                        const canonicalKey = alias ? alias.canonical_key : sectionKey
+                        const canonicalNode = taxonomyData.nodes.find((n) => n.section_key === canonicalKey)
+                        const node = canonicalNode || currentNode
+                        
+                        if (!node) return null
+
+                        const siblings = taxonomyData.nodes.filter(
+                          (n) => n.parent_section_key === node.parent_section_key && n.section_key !== canonicalKey
+                        )
+                        const related = taxonomyData.related
+                          .filter((r) => r.a_section_key === canonicalKey || r.b_section_key === canonicalKey)
+                          .map((r) => {
+                            const relatedKey = r.a_section_key === canonicalKey ? r.b_section_key : r.a_section_key
+                            return taxonomyData.nodes.find((n) => n.section_key === relatedKey)
+                          })
+                          .filter((n): n is TaxonomyNode => n !== undefined)
+
+                        if (siblings.length === 0 && related.length === 0) return null
+
+                        return (
+                          <div className="space-y-2 border-t pt-4">
+                            <h3 className="text-sm font-medium">Связанные секции</h3>
+                            
+                            {/* Siblings */}
+                            {siblings.length > 0 && (
+                              <div className="rounded-lg border bg-muted/30 p-2">
+                                <span className="text-xs font-medium">Соседние секции:</span>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {siblings.map((sibling) => (
+                                    <Button
+                                      key={sibling.section_key}
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={() => {
+                                        setSectionKey(sibling.section_key)
+                                        setTitleRu(sibling.title_ru)
+                                      }}
+                                    >
+                                      {sibling.section_key.split(".").pop()}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Related sections */}
+                            {related.length > 0 && (
+                              <div className="rounded-lg border bg-muted/30 p-2">
+                                <span className="text-xs font-medium">Связанные секции:</span>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {related.map((rel) => (
+                                    <Button
+                                      key={rel.section_key}
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={() => {
+                                        setSectionKey(rel.section_key)
+                                        setTitleRu(rel.title_ru)
+                                      }}
+                                    >
+                                      {rel.section_key.split(".").pop()}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+
+                        {!selectedCluster && (
+                          <div className="flex h-full items-center justify-center py-8">
+                            <div className="text-center space-y-2">
+                              <FileText className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                              <p className="text-sm text-muted-foreground">Выберите кластер для просмотра контекста</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
               {/* Right Column: Mapping Configuration */}
               <Card className={`rounded-xl shadow-sm flex flex-col min-h-0 min-w-0 ${mobileTab !== "mapping" ? "hidden" : ""} lg:flex md:col-span-1 ${mappingMode === "ambiguous" ? "border-yellow-300 bg-yellow-50/30 dark:bg-yellow-950/10" : ""}`}>
                 <CardHeader className="flex-shrink-0 pb-2">
@@ -1026,55 +1352,6 @@ function ClusterMappingContent() {
                               )}
                             </div>
                           </div>
-
-                          {/* Recommendations - перемещено после формы */}
-                          {(selectedCluster.candidate_section_1 ||
-                            selectedCluster.candidate_section_2 ||
-                            selectedCluster.candidate_section_3) && (
-                            <div className="space-y-1.5 pt-2 border-t">
-                              <h3 className="text-sm font-medium">Рекомендуемые секции</h3>
-                              <div className="space-y-1.5">
-                                {[
-                                  selectedCluster.candidate_section_1,
-                                  selectedCluster.candidate_section_2,
-                                  selectedCluster.candidate_section_3,
-                                ].map(
-                                  (candidate, idx) =>
-                                    candidate && (
-                                      <div
-                                        key={idx}
-                                        className="rounded-lg border border-muted bg-muted/20 p-2 space-y-1.5"
-                                      >
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1 space-y-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                              <Badge variant="outline" className="h-5 text-xs shrink-0">
-                                                {idx + 1}
-                                              </Badge>
-                                              <code className="text-xs font-mono break-all">{candidate.section_key}</code>
-                                            </div>
-                                            <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2">
-                                              {candidate.title_ru}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                              Score: {candidate.score.toFixed(2)}
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleSelectCandidate(candidate)}
-                                          className="w-full h-8 text-xs"
-                                        >
-                                          Выбрать
-                                        </Button>
-                                      </div>
-                                    ),
-                                )}
-                              </div>
-                            </div>
-                          )}
                         </>
                       )}
                     </div>
