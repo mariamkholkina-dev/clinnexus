@@ -98,7 +98,7 @@ make prod-build
 ```bash
 # Запуск миграций
 docker compose -f docker-compose.prod.yml run --rm backend \
-    alembic -c /app/db/alembic.ini upgrade head
+    alembic -c /app/alembic.ini upgrade head
 ```
 
 ### 4.3. Запуск seed скриптов (опционально)
@@ -296,7 +296,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 # Запуск миграций (если есть новые)
 docker compose -f docker-compose.prod.yml run --rm backend \
-    alembic -c /app/db/alembic.ini upgrade head
+    alembic -c /app/alembic.ini upgrade head
 ```
 
 ## Остановка приложения

@@ -8,11 +8,15 @@ dev:
 
 .PHONY: migrate
 migrate:
-	docker-compose run --rm backend alembic -c /app/db/alembic.ini upgrade head
+	docker-compose run --rm backend alembic -c /app/alembic.ini upgrade head
 
 .PHONY: seed
 seed:
 	docker-compose run --rm backend python -m app.scripts.seed
+
+.PHONY: seed-taxonomy
+seed-taxonomy:
+	docker-compose run --rm backend python -m app.scripts.seed_taxonomy
 
 # Production команды
 .PHONY: prod-build
@@ -41,11 +45,19 @@ prod-restart:
 
 .PHONY: prod-migrate
 prod-migrate:
-	docker compose -f docker-compose.prod.yml run --rm backend alembic -c /app/db/alembic.ini upgrade head
+	docker compose -f docker-compose.prod.yml run --rm backend alembic -c /app/alembic.ini upgrade head
 
 .PHONY: prod-seed
 prod-seed:
 	docker compose -f docker-compose.prod.yml run --rm backend python -m app.scripts.seed
+
+.PHONY: prod-seed-taxonomy
+prod-seed-taxonomy:
+	docker compose -f docker-compose.prod.yml run --rm backend python -m app.scripts.seed_taxonomy
+
+.PHONY: prod-seed-taxonomy-clear
+prod-seed-taxonomy-clear:
+	docker compose -f docker-compose.prod.yml run --rm backend python -m app.scripts.seed_taxonomy --clear
 
 .PHONY: prod-clean
 prod-clean:
