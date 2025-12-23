@@ -40,126 +40,72 @@ class ImpactService:
         if not change_event:
             raise ValueError(f"ChangeEvent {change_event_id} не найден")
 
-        # Убеждаемся, что выравнивание выполнено
-        aligner = AnchorAligner(self.db)
-        await aligner.align(
-            change_event.from_version_id,
-            change_event.to_version_id,
-            scope="body",
-            min_score=0.78,
-        )
-
-        # Получаем anchor_matches
+        # Шаг 1: Получаем AnchorMatch со score < 0.95 (изменённые/удалённые)
         stmt = select(AnchorMatch).where(
             AnchorMatch.from_doc_version_id == change_event.from_version_id,
             AnchorMatch.to_doc_version_id == change_event.to_version_id,
+            AnchorMatch.score < 0.95,
         )
         result = await self.db.execute(stmt)
         matches = result.scalars().all()
 
-        # Определяем измененные и удаленные anchor_ids
-        changed_anchor_ids: set[str] = set()
-        removed_anchor_ids: set[str] = set()
-        matched_anchor_ids: set[str] = set()
+        if not matches:
+            logger.info("Вычисление воздействия: нет изменённых anchor_matches")
+            return []
 
-        for match in matches:
-            matched_anchor_ids.add(match.from_anchor_id)
-            if match.score < 1.0:
-                changed_anchor_ids.add(match.from_anchor_id)
+        # Карта anchor_id -> score
+        changed_anchors: dict[str, float] = {m.from_anchor_id: m.score for m in matches}
 
-        # Получаем все якоря из from_version для определения removed
-        stmt = select(Anchor.anchor_id).where(
-            Anchor.doc_version_id == change_event.from_version_id
+        # Шаг 2: Находим GeneratedTargetSection, которые ссылаются на старые anchor_ids
+        stmt_sections = (
+            select(GeneratedTargetSection, GenerationRun)
+            .join(GenerationRun, GeneratedTargetSection.generation_run_id == GenerationRun.id)
+            .where(GenerationRun.study_id == change_event.study_id)
         )
-        result = await self.db.execute(stmt)
-        all_from_anchor_ids = {row[0] for row in result}
-        removed_anchor_ids = all_from_anchor_ids - matched_anchor_ids
+        sec_res = await self.db.execute(stmt_sections)
+        rows = sec_res.all()
 
-        # Находим затронутые факты через fact_evidence
-        affected_facts = await self._find_affected_facts(
-            change_event.study_id,
-            changed_anchor_ids | removed_anchor_ids,
-        )
-
-        # Находим затронутые topic_evidence
-        affected_topics = await self._find_affected_topics(
-            change_event.from_version_id,
-            changed_anchor_ids | removed_anchor_ids,
-        )
-
-        # Находим факты, которые были обновлены (через fact_evidence с измененными anchor_ids)
-        updated_fact_ids = await self._find_updated_fact_ids(
-            change_event.study_id,
-            changed_anchor_ids | removed_anchor_ids,
-        )
-
-        # Находим затронутые GeneratedTargetSection
-        affected_sections = await self._find_affected_generated_sections(
-            change_event.study_id,
-            changed_anchor_ids | removed_anchor_ids,
-            updated_fact_ids,
-        )
-
-        # Создаем ImpactItem записи
         impact_items: list[ImpactItem] = []
 
-        # Для каждой затронутой секции
-        for section in affected_sections:
-            # Получаем generation_run для определения target_doc_type
-            generation_run = await self.db.get(GenerationRun, section.generation_run_id)
-            if not generation_run:
+        for section, gen_run in rows:
+            anchors_in_section = self._extract_anchor_ids_from_artifacts(section.artifacts_json)
+            impacted = anchors_in_section & set(changed_anchors.keys())
+            if not impacted:
                 continue
 
-            # Определяем recommended_action
-            recommended_action = RecommendedAction.MANUAL_REVIEW
-            reason = "Секция ссылается на измененные якоря или обновленные факты"
+            # Создаём ImpactItem для каждого затронутого anchor_id
+            for aid in impacted:
+                impact_item = ImpactItem(
+                    change_event_id=change_event_id,
+                    affected_doc_type=gen_run.target_doc_type,
+                    affected_target_section=gen_run.target_section,
+                    reason_json={
+                        "type": "source_changed",
+                        "anchor_id": aid,
+                        "change_score": changed_anchors.get(aid, 0.0),
+                    },
+                    recommended_action=RecommendedAction.MANUAL_REVIEW,
+                    status=ImpactStatus.PENDING,
+                )
+                impact_items.append(impact_item)
+                self.db.add(impact_item)
 
-            impact_item = ImpactItem(
-                change_event_id=change_event_id,
-                affected_doc_type=generation_run.target_doc_type,
-                affected_target_section=generation_run.target_section,
-                reason_json={
-                    "generated_section_id": str(section.id),
-                    "generation_run_id": str(section.generation_run_id),
-                    "reason": reason,
-                    "affected_anchor_ids": list(
-                        self._extract_anchor_ids_from_artifacts(section.artifacts_json)
-                        & (changed_anchor_ids | removed_anchor_ids)
-                    ),
-                    "affected_fact_keys": list(
-                        self._extract_fact_keys_from_artifacts(section.artifacts_json)
-                        & updated_fact_ids
-                    ),
-                },
-                recommended_action=recommended_action,
-                status=ImpactStatus.PENDING,
-            )
-            impact_items.append(impact_item)
-            self.db.add(impact_item)
-
-        # Создаем Task типа review_impact, если есть затронутые секции
+        # Создаём Task для пользователя
         if impact_items:
             task = Task(
                 study_id=change_event.study_id,
                 type=TaskType.REVIEW_IMPACT,
                 status=TaskStatus.OPEN,
                 payload_json={
+                    "title": "Review impact on CSR sections due to Protocol v2 update",
                     "change_event_id": str(change_event_id),
                     "impact_items_count": len(impact_items),
-                    "affected_sections": [
-                        {
-                            "section_id": str(item.id),
-                            "doc_type": item.affected_doc_type.value,
-                            "section": item.affected_target_section,
-                        }
-                        for item in impact_items
-                    ],
                 },
             )
             self.db.add(task)
             logger.info(
                 f"Создана задача review_impact для change_event {change_event_id}, "
-                f"затронуто секций: {len(impact_items)}"
+                f"затронуто элементов: {len(impact_items)}"
             )
 
         await self.db.commit()

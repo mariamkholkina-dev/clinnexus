@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
@@ -435,8 +436,25 @@ class FactExtractionService:
             created_from_doc_version_id=doc_version_id,
         )
         self.db.add(fact)
-        await self.db.flush()
-        return fact
+        try:
+            await self.db.flush()
+            return fact
+        except IntegrityError:
+            # Возможная гонка при уникальном индексе (study_id, fact_type, fact_key):
+            # параллельная транзакция уже успела вставить факт.
+            await self.db.rollback()
+            res = await self.db.execute(
+                select(Fact).where(
+                    Fact.study_id == study_id,
+                    Fact.fact_type == fact_type,
+                    Fact.fact_key == fact_key,
+                )
+            )
+            existing_after = res.scalar_one_or_none()
+            if existing_after is None:
+                # Если по каким‑то причинам факт так и не найден, пробрасываем исходную ошибку.
+                raise
+            return existing_after
 
     async def _replace_evidence_for_fact(
         self,

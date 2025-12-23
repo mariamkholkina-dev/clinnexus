@@ -165,6 +165,12 @@ class ChunkingService:
             chunk_ordinal = 0
             chunks_in_section = 0
 
+            # Счётчики для группировки CELL-якорей в чанки по 10–15 штук в рамках одной строки таблицы
+            prev_anchor_was_cell = False
+            current_cell_table_id: int | None = None
+            current_cell_row_idx: int | None = None
+            current_cell_run_len = 0
+
             def flush_chunk() -> None:
                 nonlocal chunk_ordinal, cur_text_parts, cur_anchor_ids, cur_chars, chunks_in_section
                 if not cur_text_parts or not cur_anchor_ids:
@@ -251,7 +257,8 @@ class ChunkingService:
 
             for a in sec_anchors_sorted:
                 # Для якорей типа CELL формируем специальный текст с метаданными таблицы
-                if a.content_type == AnchorContentType.CELL:
+                is_cell = a.content_type == AnchorContentType.CELL
+                if is_cell:
                     piece = self._format_cell_chunk_text(a)
                 else:
                     piece = (a.text_norm or "").strip()
@@ -268,6 +275,7 @@ class ChunkingService:
                 new_chars = cur_chars + len(addition)
                 new_token_est = int(new_chars / 4)
 
+                # Ограничение по размеру чанка (общий токен-лимит)
                 if cur_text_parts and new_token_est > max_tokens:
                     logger.debug(
                         "Chunking: превышен max_tokens -> flush "
@@ -276,8 +284,79 @@ class ChunkingService:
                         f"next_anchor_id={a.anchor_id})"
                     )
                     flush_chunk()
+                    # Сбрасываем счётчики CELL-ранов после flush
+                    prev_anchor_was_cell = False
+                    current_cell_table_id = None
+                    current_cell_run_len = 0
+                    # Пересчитываем addition / new_chars для нового чанка
+                    addition = piece
+                    new_chars = len(addition)
+                    new_token_est = int(new_chars / 4)
 
-                # После flush можем снова попытаться добавить
+                # Дополнительное ограничение для CELL: группируем 10–15 ячеек подряд в одной таблице
+                if is_cell:
+                    location_json = a.location_json if isinstance(a.location_json, dict) else {}
+                    table_id = location_json.get("table_id")
+                    row_idx = location_json.get("row_idx")
+
+                    same_row = (
+                        prev_anchor_was_cell
+                        and current_cell_table_id == table_id
+                        and current_cell_row_idx == row_idx
+                    )
+
+                    # Если начинаем новую строку или новую таблицу — флашим предыдущий cell-чанк
+                    if prev_anchor_was_cell and not same_row and cur_text_parts:
+                        logger.debug(
+                            "Chunking: новая строка/таблица для CELL -> flush "
+                            f"(section_path={section_path!r}, table_id={table_id}, row_idx={row_idx}, "
+                            f"prev_table={current_cell_table_id}, prev_row={current_cell_row_idx})"
+                        )
+                        flush_chunk()
+                        prev_anchor_was_cell = False
+                        current_cell_table_id = None
+                        current_cell_row_idx = None
+                        current_cell_run_len = 0
+                        # Пересчитываем addition / new_chars для нового чанка
+                        addition = piece
+                        new_chars = len(addition)
+                        new_token_est = int(new_chars / 4)
+
+                    # Если продолжаем ту же строку в таблице — ограничиваем длину 10–15 ячеек
+                    if same_row:
+                        planned_len = current_cell_run_len + 1
+                        if planned_len > 15 and cur_text_parts:
+                            logger.debug(
+                                "Chunking: превышен лимит CELL в строке -> flush "
+                                f"(section_path={section_path!r}, table_id={table_id}, row_idx={row_idx}, "
+                                f"cell_run_len={current_cell_run_len}, next_anchor_id={a.anchor_id})"
+                            )
+                            flush_chunk()
+                            prev_anchor_was_cell = False
+                            current_cell_table_id = None
+                            current_cell_row_idx = None
+                            current_cell_run_len = 0
+                            addition = piece
+                            new_chars = len(addition)
+                            new_token_est = int(new_chars / 4)
+
+                    # Начинаем новый CELL-ран для строки при необходимости
+                    if not prev_anchor_was_cell:
+                        current_cell_table_id = table_id
+                        current_cell_row_idx = row_idx
+                        current_cell_run_len = 0
+
+                    # После возможного flush добавляем CELL в текущий чанк
+                    current_cell_run_len += 1
+                    prev_anchor_was_cell = True
+                else:
+                    # Для не-CELL якорей сбрасываем CELL-ран
+                    prev_anchor_was_cell = False
+                    current_cell_table_id = None
+                    current_cell_row_idx = None
+                    current_cell_run_len = 0
+
+                # После всех проверок добавляем текст в текущий чанк
                 if not cur_text_parts:
                     addition = piece
                     new_chars = len(addition)
@@ -307,40 +386,41 @@ class ChunkingService:
 
     def _format_cell_chunk_text(self, anchor: Anchor) -> str:
         """
-        Формирует текст чанка для якоря типа CELL с метаданными таблицы.
-        
-        Формат: "Table: [section_path]. Row: [row_idx], Column: [col_idx]. Value: [text_norm]"
-        
-        Args:
-            anchor: Якорь типа CELL
-            
-        Returns:
-            Отформатированный текст для чанка
+        Формирует семантический текст для CELL:
+        - Базово: "Table row content in {section_path}. Value: {text_norm}. Location: Row {row_idx}, Col {col_idx}."
+        - Если есть header_path: "Procedure: {row_headers}. Visit: {col_headers}. Value: {text_norm}"
         """
         text_norm = (anchor.text_norm or "").strip()
         if not text_norm:
             return ""
         
         location_json = anchor.location_json if isinstance(anchor.location_json, dict) else {}
-        
-        # Проверяем наличие метаданных таблицы
-        table_id = location_json.get("table_id")
         row_idx = location_json.get("row_idx")
         col_idx = location_json.get("col_idx")
-        
-        if table_id is not None or row_idx is not None or col_idx is not None:
-            # Формируем текст с метаданными таблицы
-            parts = [f"Table: {anchor.section_path}"]
-            
-            if row_idx is not None:
-                parts.append(f"Row: {row_idx}")
-            if col_idx is not None:
-                parts.append(f"Column: {col_idx}")
-            
-            parts.append(f"Value: {text_norm}")
-            return ". ".join(parts) + "."
-        else:
-            # Если метаданных нет, используем обычный формат
-            return text_norm
+        header_path = location_json.get("header_path") or {}
+
+        # Если есть заголовки строк/колонок — используем их для семантики
+        if isinstance(header_path, dict):
+            row_headers = header_path.get("row_headers") or []
+            col_headers = header_path.get("col_headers") or []
+            rh_txt = ", ".join([str(x).strip() for x in row_headers if str(x).strip()]) if isinstance(row_headers, list) else ""
+            ch_txt = (
+                ", ".join([str(x).strip() for x in col_headers if str(x).strip()])
+                if isinstance(col_headers, list)
+                else ""
+            )
+            if rh_txt or ch_txt:
+                return (
+                    f"Procedure: {rh_txt or 'unknown'}. "
+                    f"Visit: {ch_txt or 'unknown'}. "
+                    f"Value: {text_norm}"
+                )
+
+        # Fallback без заголовков
+        return (
+            f"Table row content in {anchor.section_path}. "
+            f"Value: {text_norm}. "
+            f"Location: Row {row_idx}, Col {col_idx}."
+        )
 
 

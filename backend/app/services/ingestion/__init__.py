@@ -300,7 +300,18 @@ class IngestionService:
                     
                     # Определяем статус фактов на основе confidence
                     fact_status = FactStatus.EXTRACTED if soa_result.confidence >= 0.7 else FactStatus.NEEDS_REVIEW
-                    
+
+                    # Перед созданием SoA-фактов удаляем ранее сохранённые факты
+                    # по (study_id, fact_type="soa", fact_key in ["visits", "procedures", "matrix"])
+                    # чтобы избежать конфликта уникального индекса uq_facts_study_type_key.
+                    await self.db.execute(
+                        delete(Fact).where(
+                            Fact.study_id == study_id,
+                            Fact.fact_type == "soa",
+                            Fact.fact_key.in_(["visits", "procedures", "matrix"]),
+                        )
+                    )
+
                     # Создаём факты для visits
                     if soa_result.visits:
                         visit_anchor_ids = _dedupe_keep_order([v.anchor_id for v in soa_result.visits if v.anchor_id])

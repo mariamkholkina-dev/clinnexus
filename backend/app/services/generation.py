@@ -157,8 +157,13 @@ class GenerationService:
             # Включаем core facts в контекст для демонстрации
             content_text = f"Черновик секции {req.section_key}.\n\n{core_facts_prompt}\n\n{context_text[:2000]}"
 
-        # Пост-процессинг: замена плейсхолдеров {{fact:fact_key}} на реальные значения
-        content_text, fact_anchor_ids = await self._replace_fact_placeholders(
+        # Post-processing: детерминированная подстановка фактов из core_facts_json
+        content_text, core_fact_anchor_ids = self.replace_fact_placeholders(
+            content_text, core_facts_json
+        )
+
+        # Fact-Injection: замена {{fact:fact_key}} по верифицированным фактам (core_facts или Facts.status=validated)
+        content_text, injected_fact_anchor_ids = await self._inject_verified_facts(
             content_text=content_text,
             study_id=req.study_id,
             core_facts_json=core_facts_json,
@@ -173,7 +178,10 @@ class GenerationService:
 
         # Объединяем anchor_ids из контекста и из фактов
         all_citation_anchor_ids = list(used_anchor_ids[:10])
-        all_citation_anchor_ids.extend(fact_anchor_ids)
+        # core_fact_anchor_ids — из core_facts_json["citations"] при подстановке плейсхолдеров
+        all_citation_anchor_ids.extend(core_fact_anchor_ids)
+        # injected_fact_anchor_ids — из FactEvidence при validated фактах
+        all_citation_anchor_ids.extend(injected_fact_anchor_ids)
         # Удаляем дубликаты с сохранением порядка
         seen_citations: set[str] = set()
         unique_citations: list[str] = []
@@ -252,8 +260,13 @@ class GenerationService:
         lines = ["=== Основные факты исследования (Hard Constraints) ==="]
         lines.append("Эти факты должны быть согласованы во всех секциях. При обнаружении конфликта в источниках - пометьте конфликт вместо угадывания.")
         lines.append("")
-        lines.append("ВАЖНО: Используй формат {{fact:ключ}}, когда пишешь о параметрах исследования (N, дозы, фаза), если они есть в Core Facts.")
-        lines.append("Например: {{fact:sample_size}}, {{fact:phase}}, {{fact:primary_endpoint_1}}.")
+        available_keys = [k for k in core_facts_json.keys() if k != "citations"] if core_facts_json else []
+        keys_str = ", ".join(available_keys) if available_keys else "нет доступных fact_key"
+        lines.append(
+            "You are a GxP-compliant writer. When mentioning core study parameters like Sample Size (N), Phase, or Arms, "
+            "you MUST use placeholders like {{fact:sample_size}} instead of writing numbers. "
+            f"Available fact keys: [{keys_str}]."
+        )
         lines.append("")
 
         if core_facts_json.get("study_title"):
@@ -330,6 +343,131 @@ class GenerationService:
             pass
 
         return conflicts
+
+    def replace_fact_placeholders(
+        self,
+        text: str,
+        core_facts_json: dict[str, Any],
+    ) -> tuple[str, list[str]]:
+        """
+        Детерминированно заменяет плейсхолдеры {{fact:fact_key}} значениями из core_facts_json.
+        Возвращает обновленный текст и список anchor_id из core_facts_json["citations"] для замененных фактов.
+        """
+        import re
+
+        if not text or not core_facts_json:
+            return text, []
+
+        citations_map = core_facts_json.get("citations") or {}
+        if not isinstance(citations_map, dict):
+            citations_map = {}
+
+        placeholder_re = re.compile(r"\{\{fact:([^}]+)\}\}")
+        matches = placeholder_re.findall(text)
+        if not matches:
+            return text, []
+
+        replaced_anchor_ids: list[str] = []
+        result_text = text
+
+        for fact_key in set(matches):
+            if fact_key not in core_facts_json:
+                continue
+            value_json = core_facts_json[fact_key]
+            replacement = self._format_fact_value(value_json)
+            placeholder = f"{{{{fact:{fact_key}}}}}"
+            result_text = result_text.replace(placeholder, replacement)
+
+            # Добавляем цитаты, если есть
+            fact_citations = citations_map.get(fact_key) or []
+            if isinstance(fact_citations, list):
+                for aid in fact_citations:
+                    if isinstance(aid, str):
+                        replaced_anchor_ids.append(aid)
+
+            logger.debug(
+                f"Post-processing: заменен плейсхолдер {placeholder} -> '{replacement}' "
+                f"(fact_key={fact_key}, citations={len(fact_citations) if isinstance(fact_citations, list) else 0})"
+            )
+
+        # Убираем дубликаты anchor_id с сохранением порядка
+        unique_anchor_ids = list(dict.fromkeys(replaced_anchor_ids))
+        return result_text, unique_anchor_ids
+
+    async def _inject_verified_facts(
+        self,
+        *,
+        content_text: str,
+        study_id: UUID,
+        core_facts_json: dict[str, Any],
+    ) -> tuple[str, list[str]]:
+        """
+        Заменяет {{fact:fact_key}} значениями из core_facts_json или Facts (status=validated).
+        Возвращает обновленный текст и anchor_ids (из core_facts_json.citations или fact_evidence).
+        """
+        import re
+
+        if not content_text:
+            return content_text, []
+
+        citations_map = core_facts_json.get("citations") if core_facts_json else {}
+        if not isinstance(citations_map, dict):
+            citations_map = {}
+
+        placeholder_re = re.compile(r"\{\{fact:([^}]+)\}\}")
+        matches = placeholder_re.findall(content_text)
+        if not matches:
+            return content_text, []
+
+        replaced_anchor_ids: list[str] = []
+        result_text = content_text
+
+        for fact_key in set(matches):
+            replacement: str | None = None
+            fact_anchor_ids: list[str] = []
+
+            # 1) Пробуем core_facts_json
+            if core_facts_json and fact_key in core_facts_json:
+                value_json = core_facts_json[fact_key]
+                replacement = self._format_fact_value(value_json)
+                fact_citations = citations_map.get(fact_key) or []
+                if isinstance(fact_citations, list):
+                    for aid in fact_citations:
+                        if isinstance(aid, str):
+                            fact_anchor_ids.append(aid)
+
+            # 2) Если нет в core_facts_json, ищем в Facts (validated)
+            if replacement is None:
+                stmt = (
+                    select(Fact)
+                    .where(
+                        Fact.study_id == study_id,
+                        Fact.fact_key == fact_key,
+                        Fact.status == FactStatus.VALIDATED,
+                    )
+                    .order_by(Fact.updated_at.desc())
+                )
+                res = await self.db.execute(stmt)
+                fact = res.scalars().first()
+                if fact:
+                    replacement = self._format_fact_value(fact.value_json, fact.unit)
+                    ev_stmt = select(FactEvidence.anchor_id).where(FactEvidence.fact_id == fact.id)
+                    ev_res = await self.db.execute(ev_stmt)
+                    fact_anchor_ids.extend([row[0] for row in ev_res.all()])
+
+            # 3) Применяем замену, если есть replacement
+            if replacement is not None:
+                placeholder = f"{{{{fact:{fact_key}}}}}"
+                result_text = result_text.replace(placeholder, replacement)
+                replaced_anchor_ids.extend(fact_anchor_ids)
+                logger.debug(
+                    f"Fact injection: {placeholder} -> '{replacement}' "
+                    f"(fact_key={fact_key}, anchors={len(fact_anchor_ids)})"
+                )
+
+        # Дедуп anchor_ids с сохранением порядка
+        unique_anchor_ids = list(dict.fromkeys(replaced_anchor_ids))
+        return result_text, unique_anchor_ids
 
     async def _replace_fact_placeholders(
         self,

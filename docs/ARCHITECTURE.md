@@ -26,10 +26,11 @@
   - `retrieval_recipe_json.prefer_source_zones` — приоритетные source_zone для retrieval (автоматически заполняются из правил для каждой target_section).
   - `retrieval_recipe_json.fallback_source_zones` — резервные source_zone, если prefer пуст.
   - **ПРИМЕЧАНИЕ**: Структура документов определяется через templates и `target_section_contracts`. Таблицы taxonomy (`target_section_taxonomy_*`) удалены в миграции 0020.
-- **Topics + HeadingClusters + ClusterAssignment + TopicEvidence**: семантические топики для группировки контента (расширено в миграциях 0014, 0018).
+- **Topics + HeadingClusters + ClusterAssignment + TopicEvidence + HeadingBlockTopicAssignments**: семантические топики для группировки контента (расширено в миграциях 0014, 0018, 0021).
   - `topics` — топики с workspace_id, topic_key, title_ru/en, description, topic_profile_json, is_active, topic_embedding, applicable_to_json.
   - `heading_clusters` — кластеры заголовков с cluster_embedding (миграция 0014).
   - `cluster_assignments` — привязка кластеров к топикам для doc_version с mapping_debug_json (миграция 0015).
+  - `heading_block_topic_assignments` — прямой маппинг блоков заголовков на топики для doc_version (миграция 0021). Блоки строятся динамически из anchors через `HeadingBlockBuilder`, `heading_block_id` — стабильный идентификатор блока.
   - `topic_evidence` — агрегированные доказательства для топиков с anchor_ids, chunk_ids, source_zone, language.
   - `topic_mapping_runs` — отслеживание запусков маппинга топиков (миграция 0014).
   - `topic_zone_priors` — приоритеты зон по doc_type для топиков (миграция 0018).
@@ -74,7 +75,9 @@
 
 - **Passport Tuning / Topics**
   1. API `/api/passport-tuning/*` для работы с кластерами заголовков и их маппингом на секции.
-  2. TopicEvidenceBuilder строит агрегированные доказательства для топиков из cluster_assignments.
-  3. Используется для настройки паспортов секций и семантической группировки контента.
+  2. `HeadingBlockBuilder` строит блоки заголовков из anchors для doc_version (динамически, с генерацией стабильного `heading_block_id`).
+  3. `TopicMappingService` создаёт `heading_block_topic_assignments` для прямого маппинга блоков на топики (миграция 0021).
+  4. `TopicEvidenceBuilder` строит агрегированные доказательства для топиков из `heading_block_topic_assignments` и блоков.
+  5. Используется для настройки паспортов секций и семантической группировки контента.
 
 

@@ -190,6 +190,22 @@ class AnchorAligner:
         for anchor in anchors:
             grouped[anchor.content_type].append(anchor)
         return grouped
+
+    @staticmethod
+    def _extract_hash_part(anchor_id: str) -> str:
+        """
+        Извлекает последнюю хеш-часть из anchor_id, игнорируя суффиксы вида :v2.
+        Форматы:
+          doc:ctype:hash
+          doc:ctype:hash:v2
+        """
+        # Убираем суффикс версионности внутри одной версии (":v2")
+        base_part = anchor_id
+        if ":v" in anchor_id:
+            parts = anchor_id.rsplit(":v", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                base_part = parts[0]
+        return base_part.split(":")[-1]
     
     def _match_anchors(
         self,
@@ -207,12 +223,37 @@ class AnchorAligner:
         """
         if not anchors_a or not anchors_b:
             return []
-        
+        # 0) Exact match по хеш-части anchor_id (новые стабильные ID)
+        hash_map_b: dict[str, list[Anchor]] = defaultdict(list)
+        for b in anchors_b:
+            h = self._extract_hash_part(b.anchor_id)
+            hash_map_b[h].append(b)
+
+        matched: list[tuple[Anchor, Anchor, float, str, dict[str, Any]]] = []
+        used_a: set[str] = set()
+        used_b: set[str] = set()
+
+        for a in anchors_a:
+            h = self._extract_hash_part(a.anchor_id)
+            if h in hash_map_b and hash_map_b[h]:
+                b = hash_map_b[h].pop(0)
+                matched.append(
+                    (a, b, 1.0, "exact_hash", {"text_sim": 1.0, "path_sim": 1.0})
+                )
+                used_a.add(a.anchor_id)
+                used_b.add(b.anchor_id)
+
+        # Фильтруем оставшихся для fuzzy/semantic матчинга
+        remaining_a = [a for a in anchors_a if a.anchor_id not in used_a]
+        remaining_b = [b for b in anchors_b if b.anchor_id not in used_b]
+        if not remaining_a or not remaining_b:
+            return matched
+
         # Генерируем кандидатов с приоритетами
         candidates: list[tuple[Anchor, Anchor, float]] = []
         
-        for anchor_a in anchors_a:
-            for anchor_b in anchors_b:
+        for anchor_a in remaining_a:
+            for anchor_b in remaining_b:
                 # Фильтруем по source_zone и language (приоритет, но не требование)
                 zone_bonus = 0.0
                 lang_bonus = 0.0
@@ -242,9 +283,7 @@ class AnchorAligner:
         candidates.sort(key=lambda x: x[2], reverse=True)
         
         # Жадный 1-to-1 матчинг
-        matches: list[tuple[Anchor, Anchor, float, str, dict[str, Any]]] = []
-        used_a: set[str] = set()
-        used_b: set[str] = set()
+        matches: list[tuple[Anchor, Anchor, float, str, dict[str, Any]]] = matched
         
         for anchor_a, anchor_b, score in candidates:
             if anchor_a.anchor_id in used_a or anchor_b.anchor_id in used_b:
@@ -319,14 +358,17 @@ class AnchorAligner:
             path_score = common_prefix_len / max(len(path_a_parts), len(path_b_parts))
         meta["path_sim"] = path_score
         
-        # 5. Combined score
-        # Веса: 0.55*embedding + 0.35*fuzzy + 0.10*zone/path
+        # 5. Combined score (усиливаем вклад embedding) + штраф за "прыжок" по разделам
         if emb_score > 0:
-            combined = 0.55 * emb_score + 0.35 * fuzzy_score + 0.10 * (0.7 * zone_score + 0.3 * path_score)
+            combined = 0.65 * emb_score + 0.25 * fuzzy_score + 0.10 * (0.6 * zone_score + 0.4 * path_score)
             method = "hybrid"
         else:
-            combined = 0.70 * fuzzy_score + 0.30 * (0.7 * zone_score + 0.3 * path_score)
+            combined = 0.60 * fuzzy_score + 0.40 * (0.5 * zone_score + 0.5 * path_score)
             method = "fuzzy"
+
+        # Штраф за существенное расхождение section_path
+        path_penalty = 0.15 * (1.0 - path_score)
+        combined = max(0.0, combined - path_penalty)
         
         return (combined, method, meta)
     

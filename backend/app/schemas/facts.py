@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.enums import EvidenceRole, FactStatus
 
@@ -13,10 +13,11 @@ class FactEvidenceOut(BaseModel):
     """Схема для вывода доказательства факта."""
 
     anchor_id: str
-    role: EvidenceRole
+    role: EvidenceRole = Field(alias="evidence_role")
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class FactOut(BaseModel):

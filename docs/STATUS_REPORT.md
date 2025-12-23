@@ -136,6 +136,8 @@
 - `topic_zone_priors(id, topic_id, doc_type, zone_key, prior_weight, created_at)` + uq(topic_id,doc_type,zone_key) — `backend/app/db/models/topics.py`, миграция: `backend/alembic/versions/0018_add_topic_doc_type_profiles_and_priors.py`
 - `zone_sets(id, doc_type, zone_key, is_active, created_at)` — миграция: `backend/alembic/versions/0019_add_zone_sets_and_crosswalk.py`
 - `zone_crosswalk(id, from_doc_type, from_zone_key, to_doc_type, to_zone_key, weight, created_at)` + uq(from_doc_type,from_zone_key,to_doc_type,to_zone_key) — миграция: `backend/alembic/versions/0019_add_zone_sets_and_crosswalk.py`
+- `heading_block_topic_assignments(id, doc_version_id, heading_block_id, topic_key, confidence, debug_json, created_at)` + uq(doc_version_id,heading_block_id) — `backend/app/db/models/topics.py`, миграция: `backend/alembic/versions/0021_add_heading_block_topic_assignments.py`
+  - Прямой маппинг блоков заголовков на топики для doc_version. Блоки строятся динамически из anchors через `HeadingBlockBuilder`, `heading_block_id` — стабильный идентификатор блока.
 
 ### 4) Где реализован ingest → anchors и как формируется `anchor_id`
 
@@ -260,6 +262,10 @@
 - **Миграция 0019 (zone sets and crosswalk)**: добавлены таблицы для кросс-документного связывания:
   - `zone_sets`: doc_type → список zone_key
   - `zone_crosswalk`: маппинг между зонами разных doc_types с весами
+- **Миграция 0021 (heading_block_topic_assignments)**: добавлена таблица для прямого маппинга блоков заголовков на топики:
+  - `heading_block_topic_assignments`: привязка `heading_block_id` к `topic_key` для doc_version
+  - Блоки строятся динамически из anchors через `HeadingBlockBuilder`, `heading_block_id` — стабильный идентификатор блока
+  - Используется `TopicMappingService` для создания маппингов и `TopicEvidenceBuilder` для построения доказательств
 
 **Facts (кроме SoA):**
 - `FactExtractionService.extract_and_upsert(...)` реализован как **rules-first** извлечение (без LLM):

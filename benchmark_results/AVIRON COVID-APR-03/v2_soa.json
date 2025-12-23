@@ -1,0 +1,945 @@
+{
+  "table_index": 9,
+  "section_path": "ПРИЛОЖЕНИЕ 1, График процедур по протоколу COVID-APR-03",
+  "visits": [
+    {
+      "visit_id": "V1",
+      "label": "День",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:984e1792ca6e7f71"
+    },
+    {
+      "visit_id": "V2",
+      "label": "Окно визита",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:d8185895b1e039ed"
+    },
+    {
+      "visit_id": "V3",
+      "label": "Информированное согласие",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:9b23cc34c5741692"
+    },
+    {
+      "visit_id": "V4",
+      "label": "Демографические данные и медицинский анамнез",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:59303304f2dc4c49"
+    },
+    {
+      "visit_id": "V5",
+      "label": "Физикальное обследование",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:ce22994503d36521"
+    },
+    {
+      "visit_id": "V6",
+      "label": "Масса тела, рост, ИМТ",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:8076163776009dc4"
+    },
+    {
+      "visit_id": "V7",
+      "label": "Жизненные показатели",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:944722087a99613b"
+    },
+    {
+      "visit_id": "V8",
+      "label": "Пульсоксиметрия с измерением SpО2",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2bd0ada49e4d5c3c"
+    },
+    {
+      "visit_id": "V9",
+      "label": "Порядковая шкала клинического улучшения (Приложение 2)",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:cc9b985d49a3c589"
+    },
+    {
+      "visit_id": "V10",
+      "label": "Лабораторные исследования",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:5f852e4a83b7d2d3"
+    },
+    {
+      "visit_id": "V11",
+      "label": "- ПЦР на РНК SARS-CoV-2",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f998e19be59ccc6c"
+    },
+    {
+      "visit_id": "V12",
+      "label": "- Общий анализ крови (ОАК)",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:94b756ee4c590ce9"
+    },
+    {
+      "visit_id": "V13",
+      "label": "- Биохимический анализ крови (б/х)",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:b14fb144b3b754d5"
+    },
+    {
+      "visit_id": "V14",
+      "label": "- С-реактивный белов (СРБ)",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f45852652f1bd132"
+    },
+    {
+      "visit_id": "V15",
+      "label": "- Коагулограмма",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:da48ff74f5f534a5"
+    },
+    {
+      "visit_id": "V16",
+      "label": "- Общий анализ мочи (ОАМ)",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:d3ecba7070638f3b"
+    },
+    {
+      "visit_id": "V17",
+      "label": "- Тест на беременность по моче",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:c22be82ef2709b18"
+    },
+    {
+      "visit_id": "V18",
+      "label": "ЭКГ в 12 отведениях",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:d4b72fb8a354b2d8"
+    },
+    {
+      "visit_id": "V19",
+      "label": "КТ органов грудной клетки",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:9c58efcbc4fd86c0"
+    },
+    {
+      "visit_id": "V20",
+      "label": "Оценка критериев включения/невключения",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:df658d33468d4f0b"
+    },
+    {
+      "visit_id": "V21",
+      "label": "Введение исследуемого препарата",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:13b2dae57773a057"
+    },
+    {
+      "visit_id": "V22",
+      "label": "Оценка переносимости исследуемого препарата",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:73f246829c3b60db"
+    },
+    {
+      "visit_id": "V23",
+      "label": "Сопутствующая терапия",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:eadcb544beb62128"
+    },
+    {
+      "visit_id": "V24",
+      "label": "Нежелательные явления",
+      "day": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6d9dae9293474d66"
+    }
+  ],
+  "procedures": [
+    {
+      "proc_id": "P001",
+      "label": "Скрининг",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:95a53f0132534748"
+    },
+    {
+      "proc_id": "P002",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:20023d693f05474e"
+    },
+    {
+      "proc_id": "P003",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:398382181959bc92"
+    },
+    {
+      "proc_id": "P004",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6695c93af70a0c01"
+    },
+    {
+      "proc_id": "P005",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:29504d699302a316"
+    },
+    {
+      "proc_id": "P006",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:0a5d59dcb604781f"
+    },
+    {
+      "proc_id": "P007",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:92a90b87545a556f"
+    },
+    {
+      "proc_id": "P008",
+      "label": "Наблюдение",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:280dc3e2ab0e1028"
+    },
+    {
+      "proc_id": "P009",
+      "label": "Наблюдение",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:3d6f63c8fae569dc"
+    },
+    {
+      "proc_id": "P010",
+      "label": "Наблюдение",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:e8675e54c644bfb6"
+    },
+    {
+      "proc_id": "P011",
+      "label": "Д/З",
+      "category": null,
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:1711dbe8fbfcc028"
+    }
+  ],
+  "matrix": [
+    {
+      "visit_id": "V1",
+      "proc_id": "P001",
+      "value": "Д0",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:62b742a4fdb027c6"
+    },
+    {
+      "visit_id": "V2",
+      "proc_id": "P001",
+      "value": "48 ч. до Д1",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:15cc743430b7a3b8"
+    },
+    {
+      "visit_id": "V3",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:cf0d8ada0256e7f1"
+    },
+    {
+      "visit_id": "V4",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f4f7eee1d7c36242"
+    },
+    {
+      "visit_id": "V5",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:3bf2b7fdade81f5d"
+    },
+    {
+      "visit_id": "V6",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:ffea21f1dd578a44"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:a06290108d583671"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:b19b7d51ca77124a"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:b90c1fe803ce480c"
+    },
+    {
+      "visit_id": "V11",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:c7c1b05965a2b9f6"
+    },
+    {
+      "visit_id": "V12",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f86ee91863edfe5d"
+    },
+    {
+      "visit_id": "V13",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:8a3ec921972961d0"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:b7a00a89a3fc61cf"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:fc06abab5b881f6f"
+    },
+    {
+      "visit_id": "V16",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:106f086876e015e9"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:953f840001436870"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f088fcff1fafbec5"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:0f45927e1e5735c9"
+    },
+    {
+      "visit_id": "V20",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:da4d0ed61efe9a0f"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:28e4efaedb06d302"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2f30d510a5c77ea7"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P002",
+      "value": "Д1",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:06a63bb4230c58b1"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:e1e4f395aab1f92c"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:1ea137686de36e32"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:7ebb2d7a7357d5f4"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:3a904bacc8f84a20"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:50dbcd71aade408e"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:aecaa5af6efa1f3c"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P003",
+      "value": "Д2",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:12406c59fa716391"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:4703895ef1824597"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:ef0a0a9d95646fcd"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:aea59673b0aa8259"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:aff4a6ead81bb95d"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:4bfde602f0b8c249"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:100d909c9721d52f"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P004",
+      "value": "Д3",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:58e4c22e1e917107"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:99422ae285d5477d"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:170fc5afec5181c5"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:a9ce83791b172e39"
+    },
+    {
+      "visit_id": "V11",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6e04be384e5263cf"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:711c176111c9a80a"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:3b41ad8872e04b1a"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:7f59460b99e8c2f2"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:c5523e8ac42ca4b8"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:ed5ddc793ae1b884"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P005",
+      "value": "Д4",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:aa9dd37ea8c552f6"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:aab0334680dcbb0e"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:143af5975ec02d41"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:a561fe34ec36c5bb"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:82ad8ad2136e8937"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:1c42fc45a2788852"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:96c5b64a325a65dc"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P006",
+      "value": "Д5",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:b8c07b597d070cbf"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:18fafc3b6e1f21aa"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:d9a4170111af249d"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6688b64547667444"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f0bf7f770083ff3f"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f17cd807b9373562"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:b3d7f412f9a35965"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P007",
+      "value": "Д6 (ОТ)",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:9ae1d903894897a2"
+    },
+    {
+      "visit_id": "V5",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:ac5d372258334732"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:e63c55059027044a"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:704e57c57b6c57d1"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2db2b300efb97c85"
+    },
+    {
+      "visit_id": "V11",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:476c689cf8da9f9d"
+    },
+    {
+      "visit_id": "V12",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:bdd7dbea1cdfbe03"
+    },
+    {
+      "visit_id": "V13",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:de6c672b72c80780"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:574680bfaa5fc060"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2171783cf2e79ab1"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:515ab93136dd0c75"
+    },
+    {
+      "visit_id": "V22",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:5da9f034049638a9"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f2269eeab30698c0"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2f4aaea8b4f3263a"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P008",
+      "value": "Д7",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:bad5b094f74e00fe"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:42d196d4f4bbdf29"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:0b0fa2d080b17167"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:95d0f5fc0aa9e3ec"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6e52d455061003c5"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:7c6a629d4244a0c1"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P009",
+      "value": "Д10",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:d6abec807901cd5e"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:4555fe009e2d750a"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:a47433852b91f5a0"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:641369fc7c6b4141"
+    },
+    {
+      "visit_id": "V11",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f19d87655b2c567b"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:c51b6e382e74e744"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2762185bfd364113"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:9c31e853963ddff5"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:d0a08ef173731a2f"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P010",
+      "value": "Д14",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:fec93a0bea43b3da"
+    },
+    {
+      "visit_id": "V2",
+      "proc_id": "P010",
+      "value": "±2дня",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:de750555f5830d5a"
+    },
+    {
+      "visit_id": "V5",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:17a1b97cb3b733c4"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:8bd7844e7c29d7dd"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:71e5e1a966c6fbfb"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:134689802ccd06e0"
+    },
+    {
+      "visit_id": "V11",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:159ee496b0fde2f6"
+    },
+    {
+      "visit_id": "V12",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:7aa5a340e6676ce3"
+    },
+    {
+      "visit_id": "V13",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:08f855fee0167525"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2f464033e8970563"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2d09a1f635e431cd"
+    },
+    {
+      "visit_id": "V16",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f4dd3d089aade827"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:c38cd2403b4e373a"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6201232420bcc1a7"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:248032b46c31c422"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:983b840f9581c0c6"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P010",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:9c5b27163372be09"
+    },
+    {
+      "visit_id": "V5",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:f6646a03f472bce5"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6692928ad93f1a7a"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:2bc605c1529c9a51"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:38334a47695f74d1"
+    },
+    {
+      "visit_id": "V11",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:7217dd1301dc9005"
+    },
+    {
+      "visit_id": "V12",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:ece1d82d602c145a"
+    },
+    {
+      "visit_id": "V13",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:940f4b526e0af3d2"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:77b7257cc239683d"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:218c06180f73166c"
+    },
+    {
+      "visit_id": "V16",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:5b47f85032b963a7"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:6b5ba6085047d04e"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:a0ecf15600457ac9"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:5f2b963e9a43848e"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:0a0b0b69bb59f7cc"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P011",
+      "value": "Х",
+      "anchor_id": "8b044992-857e-4058-b325-69e0dcab08d9:cell:4a2ba7cad356ef9f"
+    }
+  ],
+  "notes": [],
+  "confidence": 0.75,
+  "warnings": [
+    "No heading match for protocol.soa"
+  ]
+}

@@ -448,6 +448,12 @@ class SoAExtractionService:
     ) -> tuple[list[CellAnchorCreate], SoAResult]:
         """Извлекает SoA из таблицы и создаёт cell anchors."""
         cell_anchors: list[CellAnchorCreate] = []
+        # Для устранения коллизий anchor_id в рамках одной версии
+        anchor_id_counts: dict[str, int] = {}
+        def _uniq_anchor_id(base: str) -> str:
+            count = anchor_id_counts.get(base, 0) + 1
+            anchor_id_counts[base] = count
+            return base if count == 1 else f"{base}:v{count}"
         visits: list[SoAVisit] = []
         procedures: list[SoAProcedure] = []
         matrix: list[SoAMatrixEntry] = []
@@ -538,12 +544,12 @@ class SoAExtractionService:
                 row_idx = idx + 1
                 col_idx = 0
             
-            # Формируем anchor_id: используем хеш контента с координатами для различения ячеек
-            # Координаты включены в хеш, но не в ID напрямую (они остаются в location_json)
-            # Формат: {doc_version_id}:cell:{get_text_hash(text_norm + section_path[:100] + ":row:col")[:16]}
-            cell_hash_input = f"{text_norm}:{section_path[:100]}:{row_idx}:{col_idx}"
+            # Формируем anchor_id для header cell:
+            # {doc_version_id}:cell:{get_text_hash(text_norm + row_idx + col_idx)[:16]}
+            cell_hash_input = f"{text_norm}:{row_idx}:{col_idx}"
             cell_hash = get_text_hash(cell_hash_input)[:16]
-            anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+            base_anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+            anchor_id = _uniq_anchor_id(base_anchor_id)
             visit_anchor_ids[idx] = anchor_id
             
             location_json = {
@@ -618,12 +624,12 @@ class SoAExtractionService:
                 row_idx = 0
                 col_idx = idx + 1
             
-            # Формируем anchor_id: используем хеш контента с координатами для различения ячеек
-            # Координаты включены в хеш, но не в ID напрямую (они остаются в location_json)
-            # Формат: {doc_version_id}:cell:{get_text_hash(text_norm + section_path[:100] + ":row:col")[:16]}
-            cell_hash_input = f"{text_norm}:{section_path[:100]}:{row_idx}:{col_idx}"
+            # Формируем anchor_id для procedure header cell:
+            # {doc_version_id}:cell:{get_text_hash(text_norm + row_idx + col_idx)[:16]}
+            cell_hash_input = f"{text_norm}:{row_idx}:{col_idx}"
             cell_hash = get_text_hash(cell_hash_input)[:16]
-            anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+            base_anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+            anchor_id = _uniq_anchor_id(base_anchor_id)
             proc_anchor_ids[idx] = anchor_id
             
             location_json = {
@@ -694,12 +700,12 @@ class SoAExtractionService:
                     row_headers = [procedures[proc_idx].label] if proc_idx < len(procedures) else []
                     col_headers = [visits[visit_idx].label] if visit_idx < len(visits) else []
                     
-                    # Формируем anchor_id: используем хеш контента с координатами для различения ячеек
-                    # Координаты включены в хеш, но не в ID напрямую (они остаются в location_json)
-                    # Формат: {doc_version_id}:cell:{get_text_hash(text_norm + section_path[:100] + ":row:col")[:16]}
-                    cell_hash_input = f"{value_norm}:{section_path[:100]}:{row_idx}:{col_idx}"
+                    # Формируем anchor_id для body cell:
+                    # {doc_version_id}:cell:{get_text_hash(text_norm + row_idx + col_idx)[:16]}
+                    cell_hash_input = f"{value_norm}:{row_idx}:{col_idx}"
                     cell_hash = get_text_hash(cell_hash_input)[:16]
-                    anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+                    base_anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+                    anchor_id = _uniq_anchor_id(base_anchor_id)
                     
                     location_json = {
                         "table_id": table_index,

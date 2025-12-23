@@ -1,0 +1,1420 @@
+[
+  {
+    "id": "619413c0-cea2-4f29-8655-e6810597e175",
+    "fact_type": "protocol_meta",
+    "fact_key": "sponsor_name",
+    "value_json": {
+      "value": "diately. Breaking of the emergency code leads to the exclusion of the respective patient."
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:ef32f3d5cb482c65",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "2834dab4-a46c-4674-b508-5a3bce3960a7",
+    "fact_type": "study",
+    "fact_key": "design.blinding",
+    "value_json": {
+      "value": "open-label"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "ee8df36e-5226-4f39-bcd9-457ed8ebabe3",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:34:56.236614Z",
+    "evidence": [
+      {
+        "anchor_id": "ee8df36e-5226-4f39-bcd9-457ed8ebabe3:p:cc82cb5f5c3ba61f",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "5c7c0abd-3882-447e-8a28-13b9e5152282",
+    "fact_type": "protocol_meta",
+    "fact_key": "cro_name",
+    "value_json": {
+      "value": "Co. KG"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:dc9e34b1e6ee067f",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "ac6dd323-0807-4e21-9475-4a54e45ee2dd",
+    "fact_type": "study",
+    "fact_key": "phase",
+    "value_json": {
+      "value": "II"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:6d8714d73b70430f",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "7b0cc51d-b3b2-41df-8270-ff6c0436e4e9",
+    "fact_type": "study",
+    "fact_key": "design.randomized",
+    "value_json": {
+      "value": true
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:ef32f3d5cb482c65",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "ddc835d9-07de-4f2c-b1a2-125cac197a88",
+    "fact_type": "soa",
+    "fact_key": "procedures",
+    "value_json": {
+      "procedures": [
+        {
+          "label": "Procedures and assess- ments",
+          "proc_id": "P001",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:b401b2a00b04484c"
+        },
+        {
+          "label": "Informed consent",
+          "proc_id": "P002",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:374c834719159980"
+        },
+        {
+          "label": "Inclusion and exclusion criteria",
+          "proc_id": "P003",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:72c8770bf8a7d3ba"
+        },
+        {
+          "label": "Demographics 1",
+          "proc_id": "P004",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:e70e47cbb6c06de5"
+        },
+        {
+          "label": "Medical history 2",
+          "proc_id": "P005",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6bdd5ea14dc9e5c6"
+        },
+        {
+          "label": "Randomization",
+          "proc_id": "P006",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:120d081717bad550"
+        },
+        {
+          "label": "Treatment",
+          "proc_id": "P007",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a126d9bf830bb57f"
+        },
+        {
+          "label": "Score Assessment of WHO`s 11-point scale",
+          "proc_id": "P008",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:88184395aa5bd2b4"
+        },
+        {
+          "label": "Detection of viral nu- cleic acid or viral gene sequencing",
+          "proc_id": "P009",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:4022aa9dd761d946"
+        },
+        {
+          "label": "Vital signs 3",
+          "proc_id": "P010",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:abb9abab2cc03ec8"
+        },
+        {
+          "label": "Physical examination4",
+          "proc_id": "P011",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d1f9dae2a2dff062"
+        },
+        {
+          "label": "Serum or urine preg- nancy test 5",
+          "proc_id": "P012",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:e37256b7ff1ee220"
+        },
+        {
+          "label": "Clinical laboratory as- sessments 6",
+          "proc_id": "P013",
+          "category": null,
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:30f0aec5c4774815"
+        }
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T12:35:30.802761Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:b401b2a00b04484c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:374c834719159980",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:72c8770bf8a7d3ba",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:e70e47cbb6c06de5",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6bdd5ea14dc9e5c6",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:120d081717bad550",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a126d9bf830bb57f",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:88184395aa5bd2b4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:4022aa9dd761d946",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:abb9abab2cc03ec8",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d1f9dae2a2dff062",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:e37256b7ff1ee220",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:30f0aec5c4774815",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "2c1b92ba-963d-4ebe-b7fc-894439ab050e",
+    "fact_type": "soa",
+    "fact_key": "matrix",
+    "value_json": {
+      "matrix": [
+        {
+          "value": "Day -1*",
+          "proc_id": "P001",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9766131b90c900a7"
+        },
+        {
+          "value": "Day 1",
+          "proc_id": "P001",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6c12d49a417c9d41"
+        },
+        {
+          "value": "Day 2",
+          "proc_id": "P001",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:5ac876fe13d00b02"
+        },
+        {
+          "value": "Day 3",
+          "proc_id": "P001",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d388f6e75bead809"
+        },
+        {
+          "value": "Day 4",
+          "proc_id": "P001",
+          "visit_id": "V5",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8ccf76866fa661c6"
+        },
+        {
+          "value": "Day 5",
+          "proc_id": "P001",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c89418ccb77a2654"
+        },
+        {
+          "value": "Day 6",
+          "proc_id": "P001",
+          "visit_id": "V7",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c287b9907ebe1da9"
+        },
+        {
+          "value": "Day 7",
+          "proc_id": "P001",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:3c60d75f0178cbdb"
+        },
+        {
+          "value": "Day 10 (±1 day)",
+          "proc_id": "P001",
+          "visit_id": "V9",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:96dc5cce57687451"
+        },
+        {
+          "value": "Day 14 (± 1 day)",
+          "proc_id": "P001",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a31c422e2c1d84ce"
+        },
+        {
+          "value": "Day 28 End of Study Visit (or early termination visit) (± 1 day)",
+          "proc_id": "P001",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7ebf783f57503820"
+        },
+        {
+          "value": "X",
+          "proc_id": "P002",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f15f1e78f5e41d07"
+        },
+        {
+          "value": "X",
+          "proc_id": "P003",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c6788dc3802ea957"
+        },
+        {
+          "value": "X ※**",
+          "proc_id": "P003",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f91ffd859b3d6f42"
+        },
+        {
+          "value": "X",
+          "proc_id": "P004",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8603f46cbb8dd80c"
+        },
+        {
+          "value": "X",
+          "proc_id": "P005",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9253f356af53470b"
+        },
+        {
+          "value": "X ※",
+          "proc_id": "P006",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:1803bae568864524"
+        },
+        {
+          "value": "X13",
+          "proc_id": "P007",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:5ba5d0d7e5370e07"
+        },
+        {
+          "value": "X",
+          "proc_id": "P007",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d25b249161deebec"
+        },
+        {
+          "value": "X",
+          "proc_id": "P007",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d85bb56619b7756f"
+        },
+        {
+          "value": "X",
+          "proc_id": "P007",
+          "visit_id": "V5",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:dbc4625073036578"
+        },
+        {
+          "value": "X",
+          "proc_id": "P007",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f939d35429b980da"
+        },
+        {
+          "value": "X",
+          "proc_id": "P007",
+          "visit_id": "V7",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:665ddbdf1406d17b"
+        },
+        {
+          "value": "X",
+          "proc_id": "P007",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:cccf186ea9aaa1cd"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7f3fcd08cdd0dc16"
+        },
+        {
+          "value": "X ※**",
+          "proc_id": "P008",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:eb8a7615673609c1"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bdfa23dcd50256ef"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:38d9a0f7b88ebb96"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V5",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:b23671d214289f51"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ba03961586310c1b"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V7",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8c46ef786c61ebcf"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f1a719a25b06cdc7"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V9",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:4037c40d83422068"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:84593f2ad9b034cb"
+        },
+        {
+          "value": "X",
+          "proc_id": "P008",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bc0dea6355d0a76d"
+        },
+        {
+          "value": "X",
+          "proc_id": "P009",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:12af733273e47507"
+        },
+        {
+          "value": "X ※**",
+          "proc_id": "P009",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ac04d4fc5d281b6c"
+        },
+        {
+          "value": "X",
+          "proc_id": "P009",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a551dc3c1c4f3c77"
+        },
+        {
+          "value": "X",
+          "proc_id": "P009",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8c95467845a9f6f6"
+        },
+        {
+          "value": "X",
+          "proc_id": "P009",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:2290bf0e950519a1"
+        },
+        {
+          "value": "X",
+          "proc_id": "P009",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:fd6967e7605f92d7"
+        },
+        {
+          "value": "X",
+          "proc_id": "P009",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:4ad34358968877af"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bf240416a626dcc4"
+        },
+        {
+          "value": "X ※",
+          "proc_id": "P010",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c22a87bad06a06ef"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ddbb307572ea1eaa"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:abc2d524d50b0851"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V5",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ace8468640021a5b"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:eb4aaf13fb1669f8"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V7",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:1cc3d6141161b914"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:882e773e05727e16"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V9",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:41785421cc775023"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7ccae8bdf4b73b99"
+        },
+        {
+          "value": "X",
+          "proc_id": "P010",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:2e6bf9fc3afd1bb8"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6449287067a9f6cf"
+        },
+        {
+          "value": "X ※**",
+          "proc_id": "P011",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9ae3c184cd48de4f"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:2da9b54e2b7dbe18"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ea49e63175ced0a9"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V5",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:e055ab02f4fac47a"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:de0894b24823ac54"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V7",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:526dd1576104e507"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:cb6c0a65c2059a4b"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V9",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d5fc043146fb1e93"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:91c62d2901e1e2fb"
+        },
+        {
+          "value": "X",
+          "proc_id": "P011",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c702ffba2bc9d63e"
+        },
+        {
+          "value": "X",
+          "proc_id": "P012",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6e960beae261eab9"
+        },
+        {
+          "value": "X",
+          "proc_id": "P012",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a6426dd3f2759402"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c32e2fc1c3d74eb4"
+        },
+        {
+          "value": "X ※**",
+          "proc_id": "P013",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:35dffeccf615f8a4"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:824d51665807ac41"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:64b2db21bedbe82e"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:b01c10115ea83b2d"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c641ed66c71865b0"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V9",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:0b9df941b0ed41de"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a2423da73a9f5b30"
+        },
+        {
+          "value": "X",
+          "proc_id": "P013",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:76b24151287a23b1"
+        }
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T12:35:30.802761Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9766131b90c900a7",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6c12d49a417c9d41",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:5ac876fe13d00b02",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d388f6e75bead809",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8ccf76866fa661c6",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c89418ccb77a2654",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c287b9907ebe1da9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:3c60d75f0178cbdb",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:96dc5cce57687451",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a31c422e2c1d84ce",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7ebf783f57503820",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f15f1e78f5e41d07",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c6788dc3802ea957",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f91ffd859b3d6f42",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8603f46cbb8dd80c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9253f356af53470b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:1803bae568864524",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:5ba5d0d7e5370e07",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d25b249161deebec",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d85bb56619b7756f",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:dbc4625073036578",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f939d35429b980da",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:665ddbdf1406d17b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:cccf186ea9aaa1cd",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7f3fcd08cdd0dc16",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:eb8a7615673609c1",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bdfa23dcd50256ef",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:38d9a0f7b88ebb96",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:b23671d214289f51",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ba03961586310c1b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8c46ef786c61ebcf",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f1a719a25b06cdc7",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:4037c40d83422068",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:84593f2ad9b034cb",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bc0dea6355d0a76d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:12af733273e47507",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ac04d4fc5d281b6c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a551dc3c1c4f3c77",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:8c95467845a9f6f6",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:2290bf0e950519a1",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:fd6967e7605f92d7",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:4ad34358968877af",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bf240416a626dcc4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c22a87bad06a06ef",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ddbb307572ea1eaa",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:abc2d524d50b0851",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ace8468640021a5b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:eb4aaf13fb1669f8",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:1cc3d6141161b914",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:882e773e05727e16",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:41785421cc775023",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7ccae8bdf4b73b99",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:2e6bf9fc3afd1bb8",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6449287067a9f6cf",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9ae3c184cd48de4f",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:2da9b54e2b7dbe18",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ea49e63175ced0a9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:e055ab02f4fac47a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:de0894b24823ac54",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:526dd1576104e507",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:cb6c0a65c2059a4b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d5fc043146fb1e93",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:91c62d2901e1e2fb",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c702ffba2bc9d63e",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6e960beae261eab9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a6426dd3f2759402",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c32e2fc1c3d74eb4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:35dffeccf615f8a4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:824d51665807ac41",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:64b2db21bedbe82e",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:b01c10115ea83b2d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c641ed66c71865b0",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:0b9df941b0ed41de",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:a2423da73a9f5b30",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:76b24151287a23b1",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "e9d97f12-3b1c-49b7-baca-a848ec618032",
+    "fact_type": "study",
+    "fact_key": "design.control_type",
+    "value_json": {
+      "value": "placebo"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:04d55f55f03f61cd",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "d3c33b53-0b17-46e8-af9e-a51cff705277",
+    "fact_type": "study",
+    "fact_key": "design.duration_subject",
+    "value_json": {
+      "raw": "treatment duration to 7 days",
+      "value": {
+        "unit": "day",
+        "value": 7
+      }
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:a7e60bc1224e06ab",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "a7746129-bbf1-4d20-8e34-36331ec4735d",
+    "fact_type": "population",
+    "fact_key": "planned_n_total",
+    "value_json": {
+      "value": 24
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:45f5c1eb3d212f22",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "7f852458-a8a4-4c99-a0cc-1cfaf92ff153",
+    "fact_type": "treatment",
+    "fact_key": "arm_count",
+    "value_json": {
+      "value": 8
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:73a92c48860bec7f",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "4fe77b6e-a0e9-481c-8ae0-10bb7b3c5c45",
+    "fact_type": "soa",
+    "fact_key": "visits",
+    "value_json": {
+      "visits": [
+        {
+          "day": null,
+          "label": "Screening period",
+          "visit_id": "V1",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f766c05318bc94a0"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V2",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ad8c5c5fe6e7b7ef"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V3",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d58a2b080aff8537"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V4",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f44572d9387f8c62"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V5",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f0d937599c1eb5ab"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V6",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7a4d37889f2c0003"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V7",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6ece48e6628c3966"
+        },
+        {
+          "day": null,
+          "label": "Treatment period",
+          "visit_id": "V8",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c88d52c500af6a63"
+        },
+        {
+          "day": null,
+          "label": "Follow up period",
+          "visit_id": "V9",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:35e3787c25705536"
+        },
+        {
+          "day": null,
+          "label": "Follow up period",
+          "visit_id": "V10",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9c4a48f09f1c2163"
+        },
+        {
+          "day": null,
+          "label": "Follow up period",
+          "visit_id": "V11",
+          "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bd86141d0a1c6a56"
+        }
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T12:35:30.802761Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f766c05318bc94a0",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:ad8c5c5fe6e7b7ef",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:d58a2b080aff8537",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f44572d9387f8c62",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:f0d937599c1eb5ab",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:7a4d37889f2c0003",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:6ece48e6628c3966",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:c88d52c500af6a63",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:35e3787c25705536",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:9c4a48f09f1c2163",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:cell:bd86141d0a1c6a56",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "ba9e7ebf-81c4-4f90-b66b-a436564e33fa",
+    "fact_type": "population",
+    "fact_key": "condition",
+    "value_json": {
+      "value": "c chronic pulmonary disease"
+    },
+    "unit": null,
+    "status": "needs_review",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:dc9d817fcae66006",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "08e9c45e-395b-479e-830a-c457e439412e",
+    "fact_type": "treatment",
+    "fact_key": "randomization_ratio",
+    "value_json": {
+      "raw": "1:1 ratio",
+      "value": "1:1"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:5e3b641d407aac31",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "bac06909-3712-459c-bd0c-7d4bc97c09d5",
+    "fact_type": "treatment",
+    "fact_key": "ip_name",
+    "value_json": {
+      "value": "nger"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:li:9caafe3052706090",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "25cb1104-453e-4505-9d2a-fcc09058cd91",
+    "fact_type": "treatment",
+    "fact_key": "dose",
+    "value_json": {
+      "unit": "in",
+      "value": 1.0
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:2e5ee1ce9f522e69",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "ad6e1c4e-07b5-423f-a602-7df7cd0be81e",
+    "fact_type": "treatment",
+    "fact_key": "route",
+    "value_json": {
+      "value": "iv"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:80082fcf578c090c",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "22d14f7a-7c96-49f9-8d4a-fe0b1b1c8b0e",
+    "fact_type": "statistics",
+    "fact_key": "alpha",
+    "value_json": {
+      "value": 0.05
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:636f563d0e88519e",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "02d7b6a5-6636-4969-8fbd-968082d622c2",
+    "fact_type": "statistics",
+    "fact_key": "power",
+    "value_json": {
+      "value": 20
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:36.531226Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:636f563d0e88519e",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "b7fc8e04-449e-4d37-83a5-862052ca4431",
+    "fact_type": "endpoints",
+    "fact_key": "primary",
+    "value_json": {
+      "value": [
+        "Biomarker endpoints: Absolute values and absolute changes in relevant biomarkers over time:",
+        "For the primary outcome a composite outcome of all cause-death or need of invasive mechan- ical ventilation up to 28 days is used. For the secondary outcome (powered secondary end- point) log transformed levels of Lactate dehydrogenase (LDH) as a surrogate marker for organ damage are used.",
+        "The primary endpoint of this trial is a composite of all cause-death or any use of invasive mechanical ventilation up to 28 days or hospital discharge."
+      ]
+    },
+    "unit": null,
+    "status": "conflicting",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:f1794521bf4df8f3",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:7be1ddf1e2e85f79",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:caf756d170441915",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:p:4e0c938d3f9b0d8f",
+        "evidence_role": "primary"
+      }
+    ]
+  },
+  {
+    "id": "9e66083f-361a-4a23-b971-2f666cf458dd",
+    "fact_type": "endpoints",
+    "fact_key": "secondary",
+    "value_json": {
+      "value": [
+        "INVESTIGATIONAL PLAN\t33",
+        "Overall Study Design and Plan-Description\t33",
+        "Discussion of Study Design, including the Choice of Control Groups\t34"
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "3f36695b-07b0-4099-a8d7-9174e1499e45",
+    "created_at": "2025-12-23T11:44:23.695513Z",
+    "updated_at": "2025-12-23T12:35:30.802761Z",
+    "evidence": [
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:li:b2567e28f458a9a9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:li:4d300218da292182",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:li:112090849e73c492",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "3f36695b-07b0-4099-a8d7-9174e1499e45:li:a7c286de008e4a90",
+        "evidence_role": "primary"
+      }
+    ]
+  }
+]

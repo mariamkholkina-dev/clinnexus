@@ -68,13 +68,13 @@ def get_text_with_context_hash(text_norm: str, section_path: str) -> str:
     
     Args:
         text_norm: Нормализованный текст
-        section_path: Путь к разделу (используются первые 100 символов)
+        section_path: Путь к разделу (используются первые 64 символа)
         
     Returns:
         Hex-строка хеша (первые 16 символов из 64)
     """
-    # Используем первые 100 символов section_path для контекста
-    context = section_path[:100]
+    # Используем первые 64 символа section_path для контекста
+    context = section_path[:64]
     # Объединяем текст и контекст для хеширования
     combined = f"{text_norm}:{context}"
     full_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
@@ -291,6 +291,8 @@ class DocxIngestor:
         
         anchors: list[AnchorCreate] = []
         warnings: list[str] = []
+        # Для детерминированного устранения коллизий anchor_id в рамках одной версии
+        anchor_id_counts: dict[str, int] = {}
         
         # Диагностика заголовков
         heading_detected_count = 0
@@ -392,14 +394,17 @@ class DocxIngestor:
             ordinal_counters[key] = ordinal
             
             # Вычисляем hash текста с контекстом раздела для стабильного anchor_id
-            # Используем text_norm + section_path[:100] для различения одинаковых абзацев в разных разделах
+            # Используем text_norm + section_path[:64] для различения одинаковых абзацев в разных разделах
             text_hash = get_text_hash(text_norm)
             context_hash = get_text_with_context_hash(text_norm, current_section_path)
             
-            # Формируем anchor_id: {doc_version_id}:{content_type}:{get_text_hash(text_norm + current_section_path[:100])[:16]}
-            # ID инвариантен к перемещению внутри документа, если текст и раздел не изменились
+            # Формируем anchor_id: {doc_version_id}:{content_type}:{hash16}
             doc_version_id_str = str(doc_version_id)
-            anchor_id = f"{doc_version_id_str}:{content_type.value}:{context_hash}"
+            base_anchor_id = f"{doc_version_id_str}:{content_type.value}:{context_hash}"
+            # Устраняем коллизии в рамках одной версии
+            count = anchor_id_counts.get(base_anchor_id, 0) + 1
+            anchor_id_counts[base_anchor_id] = count
+            anchor_id = base_anchor_id if count == 1 else f"{base_anchor_id}:v{count}"
             
             # Формируем location_json
             location_json = {
@@ -494,13 +499,15 @@ class DocxIngestor:
                             # Вычисляем hash текста для стабильного anchor_id сносок
                             # Для сносок используем только text_norm (без section_path)
                             text_hash = get_text_hash(text_norm)
-                            # Берем первые 16 символов хеша
                             fn_hash_short = text_hash[:16]
                             
-                            # Формируем anchor_id для footnotes: {doc_version_id}:fn:{get_text_hash(text_norm)[:16]}
-                            # ID инвариантен к перемещению внутри документа, если текст не изменился
+                            # Формируем anchor_id для footnotes: {doc_version_id}:fn:{hash16}
                             doc_version_id_str = str(doc_version_id)
-                            anchor_id = f"{doc_version_id_str}:fn:{fn_hash_short}"
+                            base_anchor_id = f"{doc_version_id_str}:fn:{fn_hash_short}"
+                            # Устраняем коллизии в рамках одной версии
+                            count = anchor_id_counts.get(base_anchor_id, 0) + 1
+                            anchor_id_counts[base_anchor_id] = count
+                            anchor_id = base_anchor_id if count == 1 else f"{base_anchor_id}:v{count}"
                             
                             # Формируем location_json
                             location_json = {

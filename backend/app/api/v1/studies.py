@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.core.audit import log_audit
 from app.core.errors import NotFoundError, ValidationError
+from app.db.enums import EvidenceRole
 from app.db.models.studies import Document, DocumentVersion, Study
 from app.db.models.facts import Fact, FactEvidence
 from app.db.models.core_facts import StudyCoreFacts
@@ -183,7 +184,17 @@ async def list_study_facts(
         evidence_list = evidence_result.scalars().all()
 
         fact_out = FactOut.model_validate(fact)
-        fact_out.evidence = [FactEvidenceOut.model_validate(e) for e in evidence_list]
+        # Если у evidence отсутствует роль, проставляем PRIMARY по умолчанию для совместимости.
+        fact_out.evidence = []
+        for e in evidence_list:
+            # Убеждаемся, что evidence_role установлен (дефолт PRIMARY)
+            evidence_role = getattr(e, "evidence_role", None) or EvidenceRole.PRIMARY
+            # Создаём словарь с правильными ключами для Pydantic (используем alias)
+            evidence_data = {
+                "anchor_id": e.anchor_id,
+                "role": evidence_role,  # Используем имя поля из схемы (alias)
+            }
+            fact_out.evidence.append(FactEvidenceOut.model_validate(evidence_data))
         facts_out.append(fact_out)
 
     return facts_out

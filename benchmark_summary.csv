@@ -1,0 +1,5 @@
+study_code,file_name,version,status,anchors_count,soa_confidence,matched_anchors,changed_anchors,processing_time_sec
+APEIRON APN01-01-COVID19,APEIRON APN01-01-COVID19__CTC201657 Protocol 2020_05_04 Version 5.0 signed_st-F.docx,v1.0,needs_review,1057,,0,0,13.72
+APEIRON APN01-01-COVID19,APEIRON APN01-01-COVID19__CTC201657 Protocol 2020_06_07 Version 5.3 SB_sho_PE.docx,v2.0,needs_review,1064,,0,0,10.2
+APEIRON APN01-01-COVID19,APEIRON APN01-01-COVID19__CTC201657 Protocol 2020_06_07 Version 5.3 SB_sho_PE1.docx,v3.0,needs_review,1064,,0,0,10.23
+APEIRON APN01-01-COVID19,APEIRON APN01-01-COVID19__CTC201657 Protocol 2020_05_04 Version 5.0 signed.docx,v4.0,needs_review,976,,0,0,8.86

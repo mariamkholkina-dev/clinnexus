@@ -152,6 +152,12 @@ docker-compose up --build
     - Удаляет таблицы `target_section_taxonomy_nodes`, `target_section_taxonomy_aliases`, `target_section_taxonomy_related`
     - Также удаляет legacy таблицы `section_taxonomy_*` если они еще существуют
     - Структура документов теперь определяется через templates и `target_section_contracts`
+  - `0021_add_heading_block_topic_assignments.py` - Добавление таблицы для прямого маппинга блоков заголовков на топики:
+    - Таблица `heading_block_topic_assignments`: привязка `heading_block_id` к `topic_key` для doc_version
+    - Блоки строятся динамически из anchors через `HeadingBlockBuilder`, `heading_block_id` — стабильный идентификатор блока
+    - Уникальный индекс на `(doc_version_id, heading_block_id)`
+    - Индексы для быстрого поиска по `doc_version_id` и `topic_key`
+    - Используется `TopicMappingService` для создания маппингов и `TopicEvidenceBuilder` для построения доказательств
 
 В `backend/DATABASE_SETUP.md` есть доп. контекст по структуре таблиц, enum и pgvector.
 

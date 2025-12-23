@@ -26,6 +26,7 @@
 """
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -45,6 +46,8 @@ try:
 except ImportError:
     load_dotenv = None
 
+ALLOWED_EXTENSIONS = {".docx", ".pdf", ".xlsx"}
+
 
 class HTTPError(Exception):
     """Исключение для HTTP ошибок."""
@@ -55,6 +58,11 @@ def die(msg: str, code: int = 1) -> None:
     """Завершает выполнение с ошибкой."""
     print(f"ОШИБКА: {msg}", file=sys.stderr)
     sys.exit(code)
+
+
+def ensure_dir(path: Path) -> None:
+    """Создаёт директорию, если она отсутствует."""
+    path.mkdir(parents=True, exist_ok=True)
 
 
 def http_json(method: str, url: str, *, json_body: Any = None, params: Dict[str, Any] | None = None, timeout: int = 30, raise_on_error: bool = True) -> Any:
@@ -184,7 +192,7 @@ def poll_ingestion_status(
             time.sleep(2)
 
 
-def create_study(api_base: str, workspace_id: str, study_code: str, title: str) -> str:
+def create_study(api_base: str, workspace_id: str, study_code: str, title: str, *, raise_on_error: bool = True) -> str:
     """Создаёт новое исследование и возвращает study_id."""
     url = f"{api_base}/api/studies"
     body = {
@@ -193,7 +201,7 @@ def create_study(api_base: str, workspace_id: str, study_code: str, title: str) 
         "title": title,
         "status": "active",
     }
-    study = http_json("POST", url, json_body=body, timeout=30)
+    study = http_json("POST", url, json_body=body, timeout=30, raise_on_error=raise_on_error)
     return study["id"]
 
 
@@ -207,6 +215,95 @@ def create_document(api_base: str, study_id: str, doc_type: str, title: str) -> 
     }
     doc = http_json("POST", url, json_body=body, timeout=30)
     return doc["id"]
+
+
+def find_study_id_by_code(api_base: str, workspace_id: str, study_code: str) -> Optional[str]:
+    """Возвращает id исследования по коду, если найдено."""
+    try:
+        studies = http_json(
+            "GET",
+            f"{api_base}/api/studies",
+            params={"workspace_id": workspace_id},
+            timeout=60,
+            raise_on_error=False,
+        )
+        if isinstance(studies, list):
+            for study in studies:
+                if study.get("study_code") == study_code:
+                    return study.get("id")
+    except Exception as e:
+        print(f"    [WARN] Не удалось получить исследования для поиска {study_code}: {e}")
+    return None
+
+
+def ensure_study(api_base: str, workspace_id: str, study_code: str, title: str) -> str:
+    """Возвращает id исследования, создаёт при отсутствии."""
+    existing = find_study_id_by_code(api_base, workspace_id, study_code)
+    if existing:
+        return existing
+    try:
+        return create_study(api_base, workspace_id, study_code, title, raise_on_error=True)
+    except HTTPError as e:
+        # На случай гонки: пробуем перечитать
+        print(f"    [WARN] Создание исследования {study_code} вернуло ошибку: {e}. Пытаемся найти повторно.")
+        retry = find_study_id_by_code(api_base, workspace_id, study_code)
+        if retry:
+            return retry
+        raise
+
+
+def find_protocol_document(api_base: str, study_id: str) -> Optional[str]:
+    """Возвращает id протокольного документа, если найден."""
+    try:
+        documents = http_json("GET", f"{api_base}/api/studies/{study_id}/documents", timeout=60, raise_on_error=False)
+        if isinstance(documents, list):
+            for doc in documents:
+                if doc.get("doc_type") == "protocol":
+                    return doc.get("id")
+    except Exception as e:
+        print(f"    [WARN] Не удалось получить документы исследования {study_id}: {e}")
+    return None
+
+
+def ensure_protocol_document(api_base: str, study_id: str, title: str) -> str:
+    """Возвращает id документа-протокола, создаёт при отсутствии."""
+    existing = find_protocol_document(api_base, study_id)
+    if existing:
+        return existing
+    return create_document(api_base, study_id, "protocol", title)
+
+
+def download_json_to_file(url: str, target_path: Path) -> None:
+    """Скачивает JSON и сохраняет в файл."""
+    try:
+        r = requests.get(url, headers={"Accept": "application/json"}, timeout=120)
+        if r.status_code >= 400:
+            print(f"    [WARN] Не удалось скачать {url}: {r.status_code} {r.text}")
+            return
+        data = r.json()
+        ensure_dir(target_path.parent)
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"    [WARN] Ошибка загрузки {url}: {e}")
+
+
+def save_benchmark_artifacts(
+    api_base: str,
+    project_root: Path,
+    study_code: str,
+    version_number: int,
+    study_id: str,
+    version_id: str,
+) -> None:
+    """Сохраняет артефакты фактов и SoA после успешной ингестии."""
+    target_dir = project_root / "benchmark_results" / study_code
+    ensure_dir(target_dir)
+    facts_path = target_dir / f"v{version_number}_facts.json"
+    soa_path = target_dir / f"v{version_number}_soa.json"
+    
+    download_json_to_file(f"{api_base}/api/studies/{study_id}/facts", facts_path)
+    download_json_to_file(f"{api_base}/api/document-versions/{version_id}/soa", soa_path)
 
 
 def create_document_version(api_base: str, document_id: str, version_label: str) -> str:
@@ -411,43 +508,88 @@ def get_processed_sha256_set(api_base: str, workspace_id: str, debug: bool = Fal
         return processed_hashes
 
 
-def find_document_files(path: Path) -> List[Path]:
-    """Находит все поддерживаемые файлы в указанном пути (файл или папка)."""
-    # API поддерживает только .docx, .pdf, .xlsx (не .doc)
-    allowed_extensions = {".docx", ".pdf", ".xlsx"}
+def _warn_doc_files(files: List[Path]) -> None:
+    if not files:
+        return
+    print(f"\nПРЕДУПРЕЖДЕНИЕ: Найдено {len(files)} файл(ов) с расширением .doc (старый формат Word):")
+    for doc_file in files[:10]:
+        print(f"  - {doc_file}")
+    if len(files) > 10:
+        print(f"  ... и ещё {len(files) - 10} файл(ов)")
+    print("  API поддерживает только .docx, .pdf, .xlsx. Эти файлы будут пропущены.")
+    print("  Рекомендуется конвертировать файлы в .docx перед загрузкой.\n")
+
+
+def discover_study_files(path: Path) -> Dict[str, List[Path]]:
+    """Строит словарь {study_code: [файлы]} c сортировкой по дате изменения."""
+    studies: Dict[str, List[Path]] = {}
     
     if path.is_file():
         ext = path.suffix.lower()
         if ext == ".doc":
-            print(f"ПРЕДУПРЕЖДЕНИЕ: Файл {path.name} имеет расширение .doc (старый формат Word).")
-            print(f"  API поддерживает только .docx, .pdf, .xlsx. Файл будет пропущен.")
-            print(f"  Рекомендуется конвертировать файл в .docx перед загрузкой.")
-            return []
-        if ext in allowed_extensions:
-            return [path]
-        else:
-            die(f"Неподдерживаемое расширение файла: {ext}. Поддерживаются: {', '.join(allowed_extensions)}")
+            _warn_doc_files([path])
+            return {}
+        if ext not in ALLOWED_EXTENSIONS:
+            die(f"Неподдерживаемое расширение файла: {ext}. Поддерживаются: {', '.join(ALLOWED_EXTENSIONS)}")
+        study_code = path.parent.name or path.stem
+        studies[study_code] = [path]
+        return studies
     
-    if path.is_dir():
-        files = []
-        skipped_doc = []
-        for ext in allowed_extensions:
-            files.extend(path.glob(f"**/*{ext}"))
-        # Проверяем .doc файлы отдельно для предупреждения
-        for doc_file in path.glob("**/*.doc"):
-            if doc_file.is_file():
-                skipped_doc.append(doc_file)
-        if skipped_doc:
-            print(f"\nПРЕДУПРЕЖДЕНИЕ: Найдено {len(skipped_doc)} файл(ов) с расширением .doc (старый формат Word):")
-            for doc_file in skipped_doc[:10]:  # Показываем первые 10
-                print(f"  - {doc_file}")
-            if len(skipped_doc) > 10:
-                print(f"  ... и ещё {len(skipped_doc) - 10} файл(ов)")
-            print(f"  API поддерживает только .docx, .pdf, .xlsx. Эти файлы будут пропущены.")
-            print(f"  Рекомендуется конвертировать файлы в .docx перед загрузкой.\n")
-        return sorted(files)
+    if not path.is_dir():
+        die(f"Путь не существует: {path}")
     
-    die(f"Путь не существует: {path}")
+    # Основной сценарий: подкаталоги — это study_code
+    for sub in sorted(path.iterdir()):
+        if not sub.is_dir():
+            continue
+        study_code = sub.name
+        study_files = [f for f in sub.rglob("*") if f.is_file() and f.suffix.lower() in ALLOWED_EXTENSIONS]
+        doc_files = [f for f in sub.rglob("*.doc") if f.is_file()]
+        
+        if doc_files:
+            _warn_doc_files(doc_files)
+        
+        if study_files:
+            study_files.sort(key=os.path.getmtime)
+            studies[study_code] = study_files
+    
+    # Фолбэк: если внутри базовой директории нет подкаталогов, но есть файлы
+    if not studies:
+        direct_files = [f for f in path.rglob("*") if f.is_file() and f.suffix.lower() in ALLOWED_EXTENSIONS]
+        doc_files = [f for f in path.rglob("*.doc") if f.is_file()]
+        if doc_files:
+            _warn_doc_files(doc_files)
+        if direct_files:
+            direct_files.sort(key=os.path.getmtime)
+            studies[path.name] = direct_files
+    
+    return studies
+
+
+def filter_processed_by_hash(study_files: Dict[str, List[Path]], processed_hashes: Set[str]) -> Tuple[Dict[str, List[Path]], int]:
+    """Фильтрует уже обработанные файлы (ready/needs_review) по SHA256."""
+    if not processed_hashes:
+        return study_files, 0
+    
+    filtered: Dict[str, List[Path]] = {}
+    skipped = 0
+    
+    for study_code, files in study_files.items():
+        for file_path in files:
+            try:
+                file_hash = calculate_file_sha256(file_path)
+            except Exception as e:
+                print(f"  [WARN] Ошибка расчёта SHA256 для {file_path}: {e}. Файл будет обработан.")
+                filtered.setdefault(study_code, []).append(file_path)
+                continue
+            
+            if file_hash.lower() in processed_hashes:
+                skipped += 1
+                continue
+            filtered.setdefault(study_code, []).append(file_path)
+    
+    filtered = {k: v for k, v in filtered.items() if v}
+    return filtered, skipped
 
 
 def extract_detailed_stats(version_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -540,10 +682,12 @@ def process_file(
     api_base: str,
     workspace_id: str,
     file_path: Path,
+    study_code: Optional[str] = None,
     study_id: Optional[str] = None,
     document_id: Optional[str] = None,
     version_id: Optional[str] = None,
     create_new_study: bool = True,
+    version_label: str = "v1.0",
     ingestion_timeout: int = 600,
 ) -> Tuple[str, bool, Dict[str, Any]]:
     """
@@ -559,9 +703,9 @@ def process_file(
         if not version_id:
             if not study_id or create_new_study:
                 # Создаём новое исследование для каждого файла
-                study_code = f"BATCH-{int(time.time())}-{file_path.stem[:30]}"
+                actual_study_code = study_code or f"BATCH-{int(time.time())}-{file_path.stem[:30]}"
                 study_title = f"Batch Upload: {file_path.stem}"
-                study_id = create_study(api_base, workspace_id, study_code, study_title)
+                study_id = create_study(api_base, workspace_id, actual_study_code, study_title)
                 print(f"    Создано исследование: study_id={study_id}")
             
             if not document_id:
@@ -571,7 +715,6 @@ def process_file(
                 print(f"    Создан документ: document_id={document_id}")
             
             # Создаём версию
-            version_label = "v1.0"
             version_id = create_document_version(api_base, document_id, version_label)
             print(f"    Создана версия: version_id={version_id}")
         
@@ -611,11 +754,15 @@ def process_file(
         # Формируем общую статистику
         stats = {
             "version_id": version_id,
+            "version_label": version_label,
             "final_status": final_status,
             "anchors_created": summary.get("anchors_created", 0),
             "chunks_created": summary.get("chunks_created", 0),
             "warnings": summary.get("warnings", []),
             "detailed": detailed_stats,
+            "ingestion_summary": summary,
+            "matched_anchors": summary.get("matched_anchors", 0),
+            "changed_anchors": summary.get("changed_anchors", 0),
         }
         
         # Выводим информацию о выполненных шагах
@@ -666,6 +813,77 @@ def process_file(
         import traceback
         traceback.print_exc()
         return version_id if version_id else "", False, {}
+
+
+def process_study(
+    study_code: str,
+    files: List[Path],
+    api_base: str,
+    workspace_id: str,
+    ingestion_timeout: int,
+    project_root: Path,
+) -> List[Dict[str, Any]]:
+    """Обрабатывает файлы одного исследования последовательно (версии в порядке mtime)."""
+    print(f"\n{'='*80}")
+    print(f"СТАРТ ИССЛЕДОВАНИЯ: {study_code} (файлов: {len(files)})")
+    print(f"{'='*80}")
+    
+    study_title = f"Benchmark: {study_code}"
+    study_id = ensure_study(api_base, workspace_id, study_code, study_title)
+    document_id = ensure_protocol_document(api_base, study_id, f"{study_code} Protocol")
+    
+    study_results: List[Dict[str, Any]] = []
+    
+    for idx, file_path in enumerate(files, 1):
+        version_label = f"v{idx}.0"
+        print(f"\n--- Версия {version_label} ({file_path.name}) ---")
+        started_at = time.time()
+        
+        version_id_result, success, stats = process_file(
+            api_base=api_base,
+            workspace_id=workspace_id,
+            file_path=file_path,
+            study_code=study_code,
+            study_id=study_id,
+            document_id=document_id,
+            version_id=None,
+            create_new_study=False,
+            version_label=version_label,
+            ingestion_timeout=ingestion_timeout,
+        )
+        
+        duration = round(time.time() - started_at, 2)
+        stats = stats or {}
+        stats["processing_time_sec"] = duration
+        
+        if success and version_id_result:
+            save_benchmark_artifacts(
+                api_base=api_base,
+                project_root=project_root,
+                study_code=study_code,
+                version_number=idx,
+                study_id=study_id,
+                version_id=version_id_result,
+            )
+        
+        study_results.append(
+            {
+                "study_code": study_code,
+                "file_name": file_path.name,
+                "version": version_label,
+                "status": stats.get("final_status", "failed" if not success else "unknown"),
+                "anchors_count": stats.get("anchors_created", 0),
+                "soa_confidence": (stats.get("detailed", {}) or {}).get("soa", {}).get("confidence"),
+                "matched_anchors": stats.get("matched_anchors", 0),
+                "changed_anchors": stats.get("changed_anchors", 0),
+                "processing_time_sec": duration,
+                "version_id": version_id_result,
+                "success": success,
+                "stats": stats,
+            }
+        )
+    
+    return study_results
 
 
 def main() -> None:
@@ -738,13 +956,19 @@ def main() -> None:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=600,
+        default=1200,
         help="Таймаут ожидания ингестии в секундах (по умолчанию: 600)"
     )
     parser.add_argument(
         "--resume",
         action="store_true",
         help="Пропускать уже обработанные файлы (проверка по SHA256 в базе данных) и начинать с первого необработанного"
+    )
+    parser.add_argument(
+        "--max-studies",
+        type=int,
+        default=0,
+        help="Максимальное число обрабатываемых исследований (0 — без ограничений)"
     )
     parser.add_argument(
         "--debug",
@@ -772,14 +996,15 @@ def main() -> None:
         # Если путь относительный, делаем его относительно текущей директории
         input_path = Path.cwd() / input_path
     
-    # Находим файлы
-    files = find_document_files(input_path)
+    project_root = Path(__file__).resolve().parent.parent
     
-    if not files:
+    study_files = discover_study_files(input_path)
+    if not study_files:
         die(f"Не найдено файлов для обработки в: {input_path}")
     
-    # Если включен режим --resume, проверяем обработанные файлы
     processed_hashes: Set[str] = set()
+    skipped_count = 0
+    
     if args.resume:
         if not workspace_id:
             die("Для использования --resume необходимо указать --workspace-id")
@@ -788,182 +1013,95 @@ def main() -> None:
         print(f"{'='*80}")
         print(f"Получение списка обработанных файлов из базы данных...")
         processed_hashes = get_processed_sha256_set(api_base, workspace_id, debug=args.debug)
-        print()
-    
-    # Фильтруем файлы, если включен режим --resume
-    files_to_process: List[Path] = []
-    skipped_count = 0
-    start_index = 0
-    
-    if args.resume and processed_hashes:
-        print(f"\n{'='*80}")
-        print("ПРОВЕРКА ФАЙЛОВ НА ОБРАБОТАННОСТЬ")
-        print(f"{'='*80}")
-        
-        for idx, file_path in enumerate(files):
-            try:
-                file_sha256 = calculate_file_sha256(file_path)
-                file_sha256_lower = file_sha256.lower()
-                
-                if file_sha256_lower in processed_hashes:
-                    print(f"  [{idx + 1}/{len(files)}] Пропущен (уже обработан): {file_path.name}")
-                    print(f"      SHA256: {file_sha256[:16]}...")
-                    skipped_count += 1
-                else:
-                    if start_index == 0:
-                        start_index = idx
-                    files_to_process.append(file_path)
-                    print(f"  [{idx + 1}/{len(files)}] Будет обработан: {file_path.name}")
-                    print(f"      SHA256: {file_sha256[:16]}... (не найден в базе)")
-            except Exception as e:
-                print(f"  [{idx + 1}/{len(files)}] Ошибка при проверке {file_path.name}: {e}")
-                # В случае ошибки добавляем файл в список для обработки
-                if start_index == 0:
-                    start_index = idx
-                files_to_process.append(file_path)
-        
-        print(f"\nПропущено уже обработанных: {skipped_count}")
-        print(f"Будет обработано: {len(files_to_process)}")
-        
-        if not files_to_process:
-            print(f"\n{'='*80}")
-            print("ВСЕ ФАЙЛЫ УЖЕ ОБРАБОТАНЫ")
-            print(f"{'='*80}")
+        study_files, skipped_count = filter_processed_by_hash(study_files, processed_hashes)
+        if not study_files:
+            print("Все найденные файлы уже обработаны (ready/needs_review). Выход.")
             sys.exit(0)
-        
-        if start_index > 0:
-            print(f"\nНачинаем обработку с файла {start_index + 1} из {len(files)}")
-        
-        files = files_to_process
-    else:
-        files_to_process = files
     
+    study_items = sorted(study_files.items(), key=lambda x: x[0])
+    if args.max_studies and args.max_studies > 0:
+        if args.max_studies < len(study_items):
+            print(f"\nБудет обработано только первых {args.max_studies} исследований из {len(study_items)} (по алфавиту).")
+        study_items = study_items[:args.max_studies]
+    
+    total_files = sum(len(v) for _, v in study_items)
     print(f"\n{'='*80}")
-    print(f"НАЙДЕНО ФАЙЛОВ ДЛЯ ОБРАБОТКИ: {len(files)}")
-    if args.resume and skipped_count > 0:
-        print(f"ПРОПУЩЕНО УЖЕ ОБРАБОТАННЫХ: {skipped_count}")
+    print(f"НАЙДЕНЫ ИССЛЕДОВАНИЯ: {len(study_items)} (файлов: {total_files})")
+    if skipped_count:
+        print(f"Пропущено по --resume: {skipped_count}")
     print(f"{'='*80}")
-    for i, f in enumerate(files, 1):
-        print(f"  {i}. {f}")
+    for study_code, files in study_items:
+        print(f"  • {study_code}: {len(files)} файл(ов)")
+        for idx, file_path in enumerate(files, 1):
+            print(f"      {idx}. {file_path.name}")
     print()
     
-    # Обрабатываем файлы
-    results: List[Tuple[str, bool, Dict[str, Any]]] = []
+    all_rows: List[Dict[str, Any]] = []
     
-    for idx, file_path in enumerate(files, 1):
-        print(f"\n{'='*80}")
-        print(f"ОБРАБОТКА ФАЙЛА {idx}/{len(files)}: {file_path.name}")
-        print(f"{'='*80}")
-        
-        study_id = args.study_id.strip() if args.study_id else None
-        document_id = args.document_id.strip() if args.document_id else None
-        vid = version_id if version_id else None
-        
-        # Для каждого файла создаём новую структуру (кроме случая, когда указан version_id)
-        create_new_study = not vid
-        
-        version_id_result, success, stats = process_file(
-            api_base=api_base,
-            workspace_id=workspace_id,
-            file_path=file_path,
-            study_id=study_id,
-            document_id=document_id,
-            version_id=vid,
-            create_new_study=create_new_study,
-            ingestion_timeout=args.timeout,
-        )
-        
-        results.append((file_path.name, version_id_result, success, stats))
+    for study_code, files in study_items:
+        try:
+            rows = process_study(
+                study_code,
+                files,
+                api_base,
+                workspace_id,
+                args.timeout,
+                project_root,
+            )
+            all_rows.extend(rows)
+        except Exception as e:
+            print(f"✗ Ошибка при обработке исследования {study_code}: {e}")
     
-    # Выводим итоговую статистику
+    # Запись расширенного отчёта
+    summary_path = project_root / "benchmark_summary.csv"
+    ensure_dir(summary_path.parent)
+    fieldnames = [
+        "study_code",
+        "file_name",
+        "version",
+        "status",
+        "anchors_count",
+        "soa_confidence",
+        "matched_anchors",
+        "changed_anchors",
+        "processing_time_sec",
+    ]
+    with open(summary_path, "w", encoding="utf-8", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in all_rows:
+            writer.writerow({k: row.get(k, "") for k in fieldnames})
+    
+    total_versions = len(all_rows)
+    successful = sum(1 for r in all_rows if r.get("success"))
+    failed = total_versions - successful
+    
     print(f"\n{'='*80}")
     print("ИТОГОВАЯ СТАТИСТИКА")
     print(f"{'='*80}")
-    
-    total = len(results)
-    successful = sum(1 for _, _, s, _ in results if s)
-    failed = total - successful
-    
-    print(f"\nВсего обработано: {total} файл(ов)")
-    print(f"Успешно: {successful}")
+    print(f"Исследований обработано: {len(study_items)}")
+    print(f"Всего версий: {total_versions}")
+    print(f"Успешно (ready/needs_review): {successful}")
     print(f"С ошибками: {failed}")
+    print(f"CSV отчёт: {summary_path}")
     
-    print(f"\n{'='*80}")
-    print("ДЕТАЛИ ПО ФАЙЛАМ:")
-    print(f"{'='*80}")
-    
-    for filename, vid, success, stats in results:
-        status_icon = "✓" if success else "✗"
-        status_text = "УСПЕШНО" if success else "ОШИБКА"
-        print(f"\n{status_icon} {status_text}: {filename}")
-        print(f"  Version ID: {vid}")
-        if stats:
-            print(f"  Статус: {stats.get('final_status', 'неизвестно')}")
-            print(f"  Якорей создано: {stats.get('anchors_created', 0)}")
-            print(f"  Чанков создано: {stats.get('chunks_created', 0)}")
-            
-            # Детальная статистика по шагам обработки
-            detailed = stats.get('detailed', {})
-            
-            # SoA
-            soa = detailed.get('soa', {})
-            if soa.get('detected'):
-                print(f"  📋 SoA (Schedule of Activities):")
-                print(f"     - Визитов: {soa.get('visits_count', 0)}")
-                print(f"     - Процедур: {soa.get('procedures_count', 0)}")
-                print(f"     - Ячеек матрицы: {soa.get('matrix_cells', 0)}")
-                if soa.get('confidence'):
-                    print(f"     - Уверенность: {soa['confidence']:.2f}")
-            else:
-                print(f"  📋 SoA: не обнаружен")
-            
-            # Chunks
-            chunks = detailed.get('chunks', {})
-            if chunks.get('created', 0) > 0:
-                print(f"  📑 Chunks (Narrative Index): {chunks['created']} создано")
-                if chunks.get('anchors_per_chunk_avg'):
-                    print(f"     - Среднее anchors/chunk: {chunks['anchors_per_chunk_avg']}")
-            
-            # Facts
-            facts = detailed.get('facts', {})
-            if facts.get('total_extracted', 0) > 0:
-                print(f"  📊 Факты (Rules-first): {facts['total_extracted']} извлечено")
-                needs_review = facts.get('needs_review', [])
-                if needs_review:
-                    print(f"     - Требуют проверки: {len(needs_review)}")
-                    for fact_key in needs_review[:3]:
-                        print(f"       • {fact_key}")
-                    if len(needs_review) > 3:
-                        print(f"       ... и ещё {len(needs_review) - 3}")
-            
-            # Section Mapping
-            mapping = detailed.get('section_mapping', {})
-            mapped = mapping.get('sections_mapped', 0)
-            needs_review_map = mapping.get('needs_review', 0)
-            if mapped > 0 or needs_review_map > 0:
-                print(f"  🗺️  Маппинг секций:")
-                print(f"     - Сопоставлено: {mapped}")
-                if needs_review_map > 0:
-                    print(f"     - Требуют проверки: {needs_review_map}")
-            
-            # Warnings
-            warnings = stats.get('warnings', [])
-            if warnings:
-                print(f"  ⚠️  Предупреждений: {len(warnings)}")
-                for w in warnings[:3]:  # Показываем первые 3
-                    print(f"     - {w}")
-                if len(warnings) > 3:
-                    print(f"     ... и ещё {len(warnings) - 3}")
-    
-    # Завершаем с соответствующим кодом
-    if failed > 0:
+    if all_rows:
         print(f"\n{'='*80}")
-        print(f"ВНИМАНИЕ: {failed} файл(ов) завершились с ошибками")
+        print("ДЕТАЛИ ПО ВЕРСИЯМ:")
         print(f"{'='*80}")
+        for row in all_rows:
+            status_icon = "✓" if row.get("success") else "✗"
+            print(f"\n{status_icon} {row['study_code']} {row['version']} ({row['file_name']}): {row.get('status')}")
+            print(f"  Anchors: {row.get('anchors_count', 0)}")
+            print(f"  SoA confidence: {row.get('soa_confidence')}")
+            print(f"  matched_anchors: {row.get('matched_anchors', 0)}, changed_anchors: {row.get('changed_anchors', 0)}")
+            print(f"  processing_time_sec: {row.get('processing_time_sec')}")
+    
+    if failed > 0:
         sys.exit(1)
     else:
         print(f"\n{'='*80}")
-        print("ВСЕ ФАЙЛЫ ОБРАБОТАНЫ УСПЕШНО")
+        print("ВСЕ ВЕРСИИ ОБРАБОТАНЫ (без ошибок в статусе ready/needs_review)")
         print(f"{'='*80}")
 
 
