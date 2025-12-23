@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import settings
 from app.core.logging import logger
-from app.db.models.sections import SectionContract
+from app.db.models.sections import TargetSectionContract
 from app.db.enums import CitationPolicy, DocumentType
 from app.schemas.sections import (
     AllowedSourcesMVP,
@@ -76,11 +76,11 @@ async def seed_contracts(*, workspace_id: UUID, seed_dir: Path, deactivate_other
             payload = _validate_contract_payload(raw)
 
             # Upsert по уникальному ключу (workspace_id, doc_type, section_key, version)
-            stmt = select(SectionContract).where(
-                SectionContract.workspace_id == workspace_id,
-                SectionContract.doc_type == doc_type,
-                SectionContract.section_key == section_key,
-                SectionContract.version == version,
+            stmt = select(TargetSectionContract).where(
+                TargetSectionContract.workspace_id == workspace_id,
+                TargetSectionContract.doc_type == doc_type,
+                TargetSectionContract.target_section == section_key,
+                TargetSectionContract.version == version,
             )
             res = await session.execute(stmt)
             existing = res.scalar_one_or_none()
@@ -95,10 +95,10 @@ async def seed_contracts(*, workspace_id: UUID, seed_dir: Path, deactivate_other
                 existing.is_active = bool(payload.get("is_active", True))
                 logger.info(f"UPDATED {doc_type.value}:{section_key} v{version} ({seed_file})")
             else:
-                contract = SectionContract(
+                contract = TargetSectionContract(
                     workspace_id=workspace_id,
                     doc_type=doc_type,
-                    section_key=section_key,
+                    target_section=section_key,
                     title=payload["title"],
                     required_facts_json=payload["required_facts_json"],
                     allowed_sources_json=payload["allowed_sources_json"],
@@ -113,12 +113,12 @@ async def seed_contracts(*, workspace_id: UUID, seed_dir: Path, deactivate_other
 
             if deactivate_others:
                 # Деактивируем другие версии той же секции
-                stmt_others = select(SectionContract).where(
-                    SectionContract.workspace_id == workspace_id,
-                    SectionContract.doc_type == doc_type,
-                    SectionContract.section_key == section_key,
-                    SectionContract.version != version,
-                    SectionContract.is_active == True,
+                stmt_others = select(TargetSectionContract).where(
+                    TargetSectionContract.workspace_id == workspace_id,
+                    TargetSectionContract.doc_type == doc_type,
+                    TargetSectionContract.target_section == section_key,
+                    TargetSectionContract.version != version,
+                    TargetSectionContract.is_active == True,
                 )
                 res_others = await session.execute(stmt_others)
                 for other in res_others.scalars().all():

@@ -1,0 +1,83 @@
+# Маппинг зон между типами документов для cross-doc retrieval
+# Формат: {source_doc_type: {source_zone: {target_doc_type: {target_zone: weight}}}}
+#
+# Пример: при генерации CSR из protocol, зона "procedures" протокола
+# может быть переведена в зону "procedures" CSR с весом 0.9
+
+protocol:
+  overview:
+    csr:
+      overview: 0.9
+      design: 0.7
+  design:
+    csr:
+      design: 0.95
+      overview: 0.6
+  procedures:
+    csr:
+      procedures: 0.9
+      design: 0.5
+  endpoints:
+    csr:
+      endpoints: 0.95
+      overview: 0.6
+  population:
+    csr:
+      population: 0.9
+      design: 0.5
+  safety:
+    csr:
+      safety: 0.95
+  statistics:
+    csr:
+      statistics: 0.95
+      design: 0.6
+  ip:
+    csr:
+      overview: 0.5
+      design: 0.4
+  data_management:
+    csr:
+      admin: 0.7
+  ethics:
+    csr:
+      admin: 0.6
+  admin:
+    csr:
+      admin: 0.9
+  appendix:
+    csr:
+      appendix: 0.8
+
+# CSR -> Protocol (обратное направление, если нужно)
+csr:
+  overview:
+    protocol:
+      overview: 0.9
+      design: 0.6
+  design:
+    protocol:
+      design: 0.95
+  procedures:
+    protocol:
+      procedures: 0.9
+  endpoints:
+    protocol:
+      endpoints: 0.95
+  population:
+    protocol:
+      population: 0.9
+  safety:
+    protocol:
+      safety: 0.95
+  statistics:
+    protocol:
+      statistics: 0.95
+  admin:
+    protocol:
+      admin: 0.8
+      data_management: 0.6
+  appendix:
+    protocol:
+      appendix: 0.8
+

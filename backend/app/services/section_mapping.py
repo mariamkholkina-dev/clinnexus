@@ -19,9 +19,11 @@ from app.db.enums import (
     SectionMapStatus,
 )
 from app.db.models.anchors import Anchor
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document, DocumentVersion
 from app.services.text_normalization import normalize_for_match, normalize_for_regex
+from app.services.zone_config import get_zone_config_service
+from app.services.lean_passport import normalize_passport
 
 
 @dataclass
@@ -64,6 +66,26 @@ class LanguageAwareSignals:
     regex_patterns: list[str]
     threshold: float = 3.0  # Минимальный score для кандидата
     confidence_cap: float | None = None  # Максимальный confidence (для mixed/unknown)
+
+
+# Версия SectionMappingService (увеличивается при изменении логики маппинга)
+VERSION = "1.0.0"
+
+# 12 core sections для protocol (из ingestion_campaign_guide.md)
+PROTOCOL_CORE_SECTIONS = [
+    "protocol.synopsis",      # overview
+    "protocol.study_design",  # design
+    "protocol.ip",            # ip
+    "protocol.endpoints",     # endpoints
+    "protocol.population",    # population
+    "protocol.procedures",    # procedures
+    "protocol.soa",           # procedures (SoA)
+    "protocol.statistics",    # statistics
+    "protocol.safety",        # safety
+    "protocol.data_management",  # data_management
+    "protocol.ethics",        # ethics
+    "protocol.admin",         # admin
+]
 
 
 class SectionMappingService:
@@ -196,7 +218,7 @@ class SectionMappingService:
     def _auto_derive_signals(
         self,
         *,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         recipe_json: dict[str, Any],
         document_language: DocumentLanguage,
     ) -> tuple[LanguageAwareSignals, str]:
@@ -205,7 +227,7 @@ class SectionMappingService:
         Дефолты под MVP: must 2-4, should до 8, not (анти-appendix), regex (частые паттерны).
         """
         title_tokens = self._tokenize_title(contract.title or "")
-        syn_tokens = self._section_key_synonyms(contract.section_key or "")
+        syn_tokens = self._section_key_synonyms(contract.target_section or "")
 
         # query_templates из retrieval_recipe_json (если присутствует)
         templates: list[str] = []
@@ -282,7 +304,7 @@ class SectionMappingService:
         ]
 
         regex_patterns: list[str] = []
-        sk = (contract.section_key or "").lower()
+        sk = (contract.target_section or "").lower()
         if sk.endswith("endpoints") or ".endpoints" in sk:
             regex_patterns = [
                 r"\bконечн(ые|ая)\s+точк",
@@ -329,7 +351,7 @@ class SectionMappingService:
     def _get_effective_signals(
         self,
         *,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         recipe_json: dict[str, Any],
         document_language: DocumentLanguage,
     ) -> tuple[LanguageAwareSignals, str]:
@@ -596,20 +618,33 @@ class SectionMappingService:
 
         doc_type = document.doc_type
 
-        # Получаем активные SectionContracts для doc_type
-        contracts_stmt = select(SectionContract).where(
-            SectionContract.doc_type == doc_type,
-            SectionContract.is_active == True,
+        # Получаем активные TargetSectionContracts для doc_type
+        contracts_stmt = select(TargetSectionContract).where(
+            TargetSectionContract.doc_type == doc_type,
+            TargetSectionContract.is_active == True,
         )
         contracts_result = await self.db.execute(contracts_stmt)
-        contracts = contracts_result.scalars().all()
+        all_contracts = contracts_result.scalars().all()
+
+        # Фильтруем контракты: только core sections для protocol + все активные для других типов
+        if doc_type == DocumentType.PROTOCOL:
+            # Для protocol маппим только 12 core sections
+            core_section_keys = set(PROTOCOL_CORE_SECTIONS)
+            contracts = [c for c in all_contracts if c.target_section in core_section_keys]
+            logger.debug(
+                f"SectionMapping: фильтрация core sections "
+                f"(all_contracts={len(all_contracts)}, core_contracts={len(contracts)})"
+            )
+        else:
+            # Для других типов документов маппим все активные контракты
+            contracts = all_contracts
 
         if not contracts:
-            logger.warning(f"Нет активных SectionContracts для doc_type={doc_type.value}")
+            logger.warning(f"Нет активных TargetSectionContracts для doc_type={doc_type.value}")
             return MappingSummary(
                 sections_mapped_count=0,
                 sections_needs_review_count=0,
-                mapping_warnings=["Нет активных SectionContracts для данного типа документа"],
+                mapping_warnings=["Нет активных TargetSectionContracts для данного типа документа"],
             )
 
         # Получаем все anchors версии
@@ -640,11 +675,11 @@ class SectionMappingService:
         )
 
         # Получаем существующие маппинги
-        existing_maps_stmt = select(SectionMap).where(
-            SectionMap.doc_version_id == doc_version_id
+        existing_maps_stmt = select(TargetSectionMap).where(
+            TargetSectionMap.doc_version_id == doc_version_id
         )
         existing_maps_result = await self.db.execute(existing_maps_stmt)
-        existing_maps = {m.section_key: m for m in existing_maps_result.scalars().all()}
+        existing_maps = {m.target_section: m for m in existing_maps_result.scalars().all()}
         logger.debug(
             "SectionMapping: existing_maps "
             f"(count={len(existing_maps)}, overridden={sum(1 for m in existing_maps.values() if m.status == SectionMapStatus.OVERRIDDEN)})"
@@ -652,15 +687,15 @@ class SectionMappingService:
 
         # Маппинг для каждого контракта
         summary = MappingSummary()
-        new_maps: list[SectionMap] = []
+        new_maps: list[TargetSectionMap] = []
 
         for contract in contracts:
             # Пропускаем overridden маппинги, если не force
-            if not force and contract.section_key in existing_maps:
-                existing_map = existing_maps[contract.section_key]
+            if not force and contract.target_section in existing_maps:
+                existing_map = existing_maps[contract.target_section]
                 if existing_map.status == SectionMapStatus.OVERRIDDEN:
                     logger.info(
-                        f"Пропуск overridden маппинга для section_key={contract.section_key}"
+                        f"Пропуск overridden маппинга для target_section={contract.target_section}"
                     )
                     continue
 
@@ -676,7 +711,7 @@ class SectionMappingService:
                 heading_candidate=heading_candidate,
                 all_anchors=all_anchors,
                 outline=outline,
-                existing_map=existing_maps.get(contract.section_key) if not force else None,
+                existing_map=existing_maps.get(contract.target_section) if not force else None,
                 document_language=doc_version.document_language,
             )
 
@@ -689,11 +724,18 @@ class SectionMappingService:
                 elif section_map.status == SectionMapStatus.NEEDS_REVIEW:
                     summary.sections_needs_review_count += 1
 
-                # Добавляем предупреждения
+                # Добавляем предупреждения только для core секций (для уменьшения шума)
                 if section_map.notes and "No heading match" in section_map.notes:
-                    summary.mapping_warnings.append(
-                        f"No heading match for {contract.section_key}"
+                    # Для protocol добавляем предупреждения только для core секций
+                    # Для других типов документов все секции считаются "core"
+                    is_core = (
+                        doc_type != DocumentType.PROTOCOL
+                        or contract.target_section in PROTOCOL_CORE_SECTIONS
                     )
+                    if is_core:
+                        summary.mapping_warnings.append(
+                            f"No heading match for {contract.target_section}"
+                        )
 
         # Сохраняем маппинги (новые добавляем, существующие уже в сессии)
         for section_map in new_maps:
@@ -779,7 +821,7 @@ class SectionMappingService:
 
     async def _find_heading_candidate(
         self,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         outline: DocumentOutline,
         all_anchors: list[Anchor],
         document_language: DocumentLanguage,
@@ -788,7 +830,7 @@ class SectionMappingService:
         Ищет кандидата заголовка для секции с учетом языка документа.
 
         Args:
-            contract: SectionContract
+            contract: TargetSectionContract
             outline: Структура документа
             all_anchors: Все anchors документа
             document_language: Язык документа
@@ -816,7 +858,7 @@ class SectionMappingService:
 
         logger.debug(
             "SectionMapping: signals "
-            f"(section_key={contract.section_key}, version={recipe.get('version', 1)}, "
+            f"(target_section={contract.target_section}, version={recipe.get('version', 1)}, "
             f"must={len(signals.must_keywords)}, should={len(signals.should_keywords)}, "
             f"not={len(signals.not_keywords)}, regex={len(signals.regex_patterns)}, "
             f"threshold={signals.threshold}, confidence_cap={signals.confidence_cap}, "
@@ -864,7 +906,7 @@ class SectionMappingService:
             level_mode = f"{min_h}..{max_h}" if not allow_any_level else "any"
             logger.debug(
                 "SectionMapping: heading candidate pass "
-                f"(section_key={contract.section_key}, pass={pass_idx}, heading_levels={level_mode})"
+                f"(target_section={contract.target_section}, pass={pass_idx}, heading_levels={level_mode})"
             )
 
             # Для диагностики top-3 считаем лучшие кандидаты среди ВСЕХ заголовков после фильтрации,
@@ -894,7 +936,7 @@ class SectionMappingService:
                     norm_preview = (text_normalized or "")[:120]
                     logger.debug(
                         "SectionMapping: compare heading "
-                        f"(section_key={contract.section_key}, level={level}, "
+                        f"(target_section={contract.target_section}, level={level}, "
                         f"anchor_id={heading_anchor.anchor_id}, "
                         f"text_raw[:120]={raw_preview!r}, text_norm_for_match[:120]={norm_preview!r})"
                     )
@@ -939,7 +981,7 @@ class SectionMappingService:
                 if (matched_must or matched_should or matched_not or matched_regex) and logger.isEnabledFor(10):
                     logger.debug(
                         "SectionMapping: match breakdown "
-                        f"(section_key={contract.section_key}, anchor_id={heading_anchor.anchor_id}, "
+                        f"(target_section={contract.target_section}, anchor_id={heading_anchor.anchor_id}, "
                         f"matched_must={matched_must}, matched_should={matched_should}, "
                         f"matched_not={matched_not}, matched_regex={matched_regex}, "
                         f"score={score:.1f})"
@@ -957,7 +999,7 @@ class SectionMappingService:
                     )
                     logger.debug(
                         "SectionMapping: heading кандидат "
-                        f"(section_key={contract.section_key}, heading_level={level}, "
+                        f"(target_section={contract.target_section}, heading_level={level}, "
                         f"anchor_id={heading_anchor.anchor_id}, score={score:.1f}, reasons={reasons})"
                     )
 
@@ -983,7 +1025,7 @@ class SectionMappingService:
                 # Summary (INFO): что использовали + какие уровни заголовков применили.
                 logger.info(
                     "SectionMapping: mapping attempt summary "
-                    f"(section_key={contract.section_key}, signals_lang={signals_lang}, signals_source={signals_source}, "
+                    f"(target_section={contract.target_section}, signals_lang={signals_lang}, signals_source={signals_source}, "
                     f"must_count={len(signals.must_keywords)}, should_count={len(signals.should_keywords)}, "
                     f"not_count={len(signals.not_keywords)}, regex_count={len(signals.regex_patterns)}, "
                     f"must_sample={must_sample}, should_sample={should_sample}, regex_sample={regex_sample}, "
@@ -996,12 +1038,12 @@ class SectionMappingService:
                     if candidate_hdr_count == 0:
                         logger.info(
                             "SectionMapping: top_candidates "
-                            f"(section_key={contract.section_key}, reason=no_candidates)"
+                            f"(target_section={contract.target_section}, reason=no_candidates)"
                         )
                     elif (max_score_seen or 0.0) <= 0.0:
                         logger.info(
                             "SectionMapping: top_candidates "
-                            f"(section_key={contract.section_key}, reason=all_scores_zero)"
+                            f"(target_section={contract.target_section}, reason=all_scores_zero)"
                         )
                     else:
                         for idx, (sc, a, lvl, must_cnt, should_cnt, not_cnt, regex_match) in enumerate(
@@ -1009,7 +1051,7 @@ class SectionMappingService:
                         ):
                             logger.info(
                                 "SectionMapping: top_candidate "
-                                f"(section_key={contract.section_key}, rank={idx}, heading_level={lvl}, "
+                                f"(target_section={contract.target_section}, rank={idx}, heading_level={lvl}, "
                                 f"anchor_id={a.anchor_id}, section_path={a.section_path}, "
                                 f"score={sc:.2f}, regex_match={regex_match}, "
                                 f"must_match_count={must_cnt}, should_match_count={should_cnt}, not_match_count={not_cnt}, "
@@ -1017,7 +1059,7 @@ class SectionMappingService:
                             )
                 logger.info(
                     "SectionMapping: выбран заголовок "
-                    f"(section_key={contract.section_key}, anchor_id={best.anchor_id}, "
+                    f"(target_section={contract.target_section}, anchor_id={best.anchor_id}, "
                     f"score={best.score:.1f}, reason={best.reason}, heading_levels_used={level_mode}, "
                     f"signals_source={signals_source})"
                 )
@@ -1027,7 +1069,7 @@ class SectionMappingService:
             # Логику маппинга не меняем: просто идём на следующий pass.
             logger.info(
                 "SectionMapping: mapping attempt summary "
-                f"(section_key={contract.section_key}, signals_lang={signals_lang}, signals_source={signals_source}, "
+                f"(target_section={contract.target_section}, signals_lang={signals_lang}, signals_source={signals_source}, "
                 f"must_count={len(signals.must_keywords)}, should_count={len(signals.should_keywords)}, "
                 f"not_count={len(signals.not_keywords)}, regex_count={len(signals.regex_patterns)}, "
                 f"must_sample={must_sample}, should_sample={should_sample}, regex_sample={regex_sample}, "
@@ -1038,12 +1080,12 @@ class SectionMappingService:
                 if candidate_hdr_count == 0:
                     logger.info(
                         "SectionMapping: top_candidates "
-                        f"(section_key={contract.section_key}, reason=no_candidates)"
+                        f"(target_section={contract.target_section}, reason=no_candidates)"
                     )
                 elif (max_score_seen or 0.0) <= 0.0:
                     logger.info(
                         "SectionMapping: top_candidates "
-                        f"(section_key={contract.section_key}, reason=all_scores_zero)"
+                        f"(target_section={contract.target_section}, reason=all_scores_zero)"
                     )
                 else:
                     top_scored_sorted = sorted(top_scored, key=lambda x: x[0], reverse=True)[:3]
@@ -1052,7 +1094,7 @@ class SectionMappingService:
                     ):
                         logger.info(
                             "SectionMapping: top_candidate "
-                            f"(section_key={contract.section_key}, rank={idx}, heading_level={lvl}, "
+                            f"(target_section={contract.target_section}, rank={idx}, heading_level={lvl}, "
                             f"anchor_id={a.anchor_id}, section_path={a.section_path}, "
                             f"score={sc:.2f}, regex_match={regex_match}, "
                             f"must_match_count={must_cnt}, should_match_count={should_cnt}, not_match_count={not_cnt}, "
@@ -1069,17 +1111,17 @@ class SectionMappingService:
                     reason = "no_candidates_above_threshold"
                 logger.debug(
                     "SectionMapping: no_heading_candidate_reason "
-                    f"(section_key={contract.section_key}, pass={pass_idx}, reason={reason}, "
+                    f"(target_section={contract.target_section}, pass={pass_idx}, reason={reason}, "
                     f"heading_levels_used={level_mode}, threshold={signals.threshold})"
                 )
 
         # Fallback для protocol.soa: ищем по фактам или cell anchors
-        if contract.section_key == "protocol.soa":
+        if contract.target_section == "protocol.soa":
             fb = await self._find_soa_fallback(all_anchors)
             if fb:
                 logger.info(
                     "SectionMapping: SOA fallback выбран "
-                    f"(section_key={contract.section_key}, anchor_id={fb.anchor_id}, reason={fb.reason})"
+                    f"(target_section={contract.target_section}, anchor_id={fb.anchor_id}, reason={fb.reason})"
                 )
             else:
                 logger.debug("SectionMapping: SOA fallback не нашёл кандидата")
@@ -1133,19 +1175,19 @@ class SectionMappingService:
     async def _create_or_update_section_map(
         self,
         doc_version_id: UUID,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         heading_candidate: HeadingCandidate | None,
         all_anchors: list[Anchor],
         outline: DocumentOutline,
-        existing_map: SectionMap | None,
+        existing_map: TargetSectionMap | None,
         document_language: DocumentLanguage,
-    ) -> SectionMap | None:
+    ) -> TargetSectionMap | None:
         """
-        Создаёт или обновляет SectionMap.
+        Создаёт или обновляет TargetSectionMap.
 
         Args:
             doc_version_id: ID версии документа
-            contract: SectionContract
+            contract: TargetSectionContract
             heading_candidate: Кандидат заголовка или None
             all_anchors: Все anchors документа
             outline: Структура документа
@@ -1153,7 +1195,7 @@ class SectionMappingService:
             document_language: Язык документа
 
         Returns:
-            SectionMap или None
+            TargetSectionMap или None
         """
         if not heading_candidate:
             # Нет кандидата → needs_review
@@ -1161,11 +1203,11 @@ class SectionMappingService:
                 # Не трогаем overridden
                 logger.debug(
                     "SectionMapping: skip overridden (no candidate) "
-                    f"(section_key={contract.section_key})"
+                    f"(target_section={contract.target_section})"
                 )
                 logger.info(
                     "SectionMapping: final_decision "
-                    f"(section_key={contract.section_key}, status=skipped, "
+                    f"(target_section={contract.target_section}, status=skipped, "
                     f"reason=overridden_no_candidate)"
                 )
                 return None
@@ -1179,19 +1221,19 @@ class SectionMappingService:
                 existing_map.mapped_by = SectionMapMappedBy.SYSTEM
                 logger.info(
                     "SectionMapping: no heading match -> needs_review (update) "
-                    f"(section_key={contract.section_key})"
+                    f"(target_section={contract.target_section})"
                 )
                 logger.info(
                     "SectionMapping: final_decision "
-                    f"(section_key={contract.section_key}, status=needs_review, confidence=0.00, "
+                    f"(target_section={contract.target_section}, status=needs_review, confidence=0.00, "
                     f"selected_heading_anchor_id=None, anchor_ids_count=0)"
                 )
                 return existing_map
             else:
                 # Создаём новый
-                section_map = SectionMap(
+                section_map = TargetSectionMap(
                     doc_version_id=doc_version_id,
-                    section_key=contract.section_key,
+                    target_section=contract.target_section,
                     anchor_ids=[],
                     chunk_ids=None,
                     confidence=0.0,
@@ -1201,23 +1243,23 @@ class SectionMappingService:
                 )
                 logger.info(
                     "SectionMapping: no heading match -> needs_review (create) "
-                    f"(section_key={contract.section_key})"
+                    f"(target_section={contract.target_section})"
                 )
                 logger.info(
                     "SectionMapping: final_decision "
-                    f"(section_key={contract.section_key}, status=needs_review, confidence=0.00, "
+                    f"(target_section={contract.target_section}, status=needs_review, confidence=0.00, "
                     f"selected_heading_anchor_id=None, anchor_ids_count=0)"
                 )
                 return section_map
 
         # Есть кандидат → захватываем блок
-        anchor_ids, confidence, notes = self._capture_heading_block(
+        anchor_ids, confidence, notes, by_zone_stats = self._capture_heading_block(
             heading_candidate, all_anchors, outline, contract, document_language
         )
         logger.debug(
             "SectionMapping: captured block "
-            f"(section_key={contract.section_key}, heading_anchor_id={heading_candidate.anchor_id}, "
-            f"anchors_in_block={len(anchor_ids)})"
+            f"(target_section={contract.target_section}, heading_anchor_id={heading_candidate.anchor_id}, "
+            f"anchors_in_block={len(anchor_ids)}, by_zone={by_zone_stats})"
         )
 
         # Определяем status
@@ -1230,11 +1272,11 @@ class SectionMappingService:
             # Не трогаем overridden
             logger.debug(
                 "SectionMapping: skip overridden (has candidate) "
-                f"(section_key={contract.section_key}, heading_anchor_id={heading_candidate.anchor_id})"
+                f"(target_section={contract.target_section}, heading_anchor_id={heading_candidate.anchor_id})"
             )
             logger.info(
                 "SectionMapping: final_decision "
-                f"(section_key={contract.section_key}, status=skipped, "
+                f"(target_section={contract.target_section}, status=skipped, "
                 f"reason=overridden_has_candidate, selected_heading_anchor_id={heading_candidate.anchor_id})"
             )
             return None
@@ -1246,14 +1288,18 @@ class SectionMappingService:
             existing_map.status = status
             existing_map.notes = notes
             existing_map.mapped_by = SectionMapMappedBy.SYSTEM
+            # Сохраняем статистику по зонам в notes (в будущем можно добавить отдельное поле)
+            if by_zone_stats:
+                zone_stats_str = ", ".join([f"{zone}:{count}" for zone, count in by_zone_stats.items()])
+                existing_map.notes = f"{notes}; by_zone: {zone_stats_str}" if notes else f"by_zone: {zone_stats_str}"
             logger.info(
                 "SectionMapping: mapped (update) "
-                f"(section_key={contract.section_key}, status={status.value}, confidence={confidence:.2f}, "
+                f"(target_section={contract.target_section}, status={status.value}, confidence={confidence:.2f}, "
                 f"anchors={len(anchor_ids)})"
             )
             logger.info(
                 "SectionMapping: final_decision "
-                f"(section_key={contract.section_key}, status={'mapped' if status == SectionMapStatus.MAPPED else 'needs_review'}, "
+                f"(target_section={contract.target_section}, status={'mapped' if status == SectionMapStatus.MAPPED else 'needs_review'}, "
                 f"confidence={confidence:.2f}, selected_heading_anchor_id={heading_candidate.anchor_id}, "
                 f"anchor_ids_count={len(anchor_ids)}, anchor_ids_first={anchor_ids[0] if anchor_ids else None}, "
                 f"anchor_ids_last={anchor_ids[-1] if anchor_ids else None}, chunk_ids=None)"
@@ -1261,24 +1307,30 @@ class SectionMappingService:
             return existing_map
         else:
             # Создаём новый
-            section_map = SectionMap(
+            # Сохраняем статистику по зонам в notes
+            notes_with_stats = notes
+            if by_zone_stats:
+                zone_stats_str = ", ".join([f"{zone}:{count}" for zone, count in by_zone_stats.items()])
+                notes_with_stats = f"{notes}; by_zone: {zone_stats_str}" if notes else f"by_zone: {zone_stats_str}"
+            
+            section_map = TargetSectionMap(
                 doc_version_id=doc_version_id,
-                section_key=contract.section_key,
+                target_section=contract.target_section,
                 anchor_ids=anchor_ids,
                 chunk_ids=None,
                 confidence=confidence,
                 status=status,
                 mapped_by=SectionMapMappedBy.SYSTEM,
-                notes=notes,
+                notes=notes_with_stats,
             )
             logger.info(
                 "SectionMapping: mapped (create) "
-                f"(section_key={contract.section_key}, status={status.value}, confidence={confidence:.2f}, "
+                f"(target_section={contract.target_section}, status={status.value}, confidence={confidence:.2f}, "
                 f"anchors={len(anchor_ids)})"
             )
             logger.info(
                 "SectionMapping: final_decision "
-                f"(section_key={contract.section_key}, status={'mapped' if status == SectionMapStatus.MAPPED else 'needs_review'}, "
+                f"(target_section={contract.target_section}, status={'mapped' if status == SectionMapStatus.MAPPED else 'needs_review'}, "
                 f"confidence={confidence:.2f}, selected_heading_anchor_id={heading_candidate.anchor_id}, "
                 f"anchor_ids_count={len(anchor_ids)}, anchor_ids_first={anchor_ids[0] if anchor_ids else None}, "
                 f"anchor_ids_last={anchor_ids[-1] if anchor_ids else None}, chunk_ids=None)"
@@ -1290,21 +1342,22 @@ class SectionMappingService:
         heading_candidate: HeadingCandidate,
         all_anchors: list[Anchor],
         outline: DocumentOutline,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         document_language: DocumentLanguage,
-    ) -> tuple[list[str], float, str]:
+    ) -> tuple[list[str], float, str, dict[str, int]]:
         """
         Захватывает блок секции от заголовка до следующего заголовка того же/выше уровня.
+        Использует prefer/fallback зоны из контракта для фильтрации и приоритизации.
 
         Args:
             heading_candidate: Кандидат заголовка
             all_anchors: Все anchors документа
             outline: Структура документа
-            contract: SectionContract
+            contract: TargetSectionContract
             document_language: Язык документа
 
         Returns:
-            (anchor_ids, confidence, notes)
+            (anchor_ids, confidence, notes, by_zone_stats) - статистика по зонам
         """
         heading_anchor = heading_candidate.anchor
         heading_level = self._extract_heading_level(heading_anchor)
@@ -1321,29 +1374,86 @@ class SectionMappingService:
                 break
         logger.debug(
             "SectionMapping: capture_heading_block bounds "
-            f"(section_key={contract.section_key}, heading_anchor_id={heading_anchor.anchor_id}, "
+            f"(target_section={contract.target_section}, heading_anchor_id={heading_anchor.anchor_id}, "
             f"heading_level={heading_level}, start_para_index={heading_para_index}, end_para_index={end_para_index})"
         )
 
         # Собираем все anchors между start и end
-        anchor_ids: list[str] = []
+        candidate_anchors: list[Anchor] = []
         for anchor in all_anchors:
             para_index = anchor.location_json.get("para_index", 0)
             if para_index >= heading_para_index:
                 if end_para_index is None or para_index < end_para_index:
-                    anchor_ids.append(anchor.anchor_id)
+                    candidate_anchors.append(anchor)
                 else:
                     break
+        
+        # Получаем prefer/fallback зоны из контракта
+        passport = normalize_passport(
+            required_facts_json=contract.required_facts_json,
+            allowed_sources_json=contract.allowed_sources_json,
+            retrieval_recipe_json=contract.retrieval_recipe_json,
+            qc_ruleset_json=contract.qc_ruleset_json,
+        )
+        prefer_zones = passport.retrieval_recipe.prefer_source_zones or []
+        fallback_zones = passport.retrieval_recipe.fallback_source_zones or []
+        
+        # Применяем topic_zone_priors, если есть required_topics в контракте
+        zone_config = get_zone_config_service()
+        topic_key = None
+        # Извлекаем topic_key из target_section (например, "protocol.soa" -> "schedule_of_activities")
+        if contract.target_section:
+            # Простая эвристика: извлекаем последнюю часть target_section
+            section_parts = contract.target_section.split(".")
+            if len(section_parts) > 1:
+                last_part = section_parts[-1]
+                # Маппинг на topic_key (можно расширить)
+                topic_mapping = {
+                    "soa": "schedule_of_activities",
+                    "study_design": "study_design",
+                    "endpoints": "study_objectives",
+                    "eligibility": "eligibility_criteria",
+                }
+                topic_key = topic_mapping.get(last_part)
+        
+        # Приоритизируем зоны с учётом topic_zone_priors
+        if topic_key:
+            prefer_zones = zone_config.apply_topic_zone_priors(prefer_zones, topic_key)
+            fallback_zones = zone_config.apply_topic_zone_priors(fallback_zones, topic_key)
+        
+        # Фильтруем и приоритизируем anchors по зонам
+        prefer_zone_anchors = [a for a in candidate_anchors if a.source_zone in prefer_zones]
+        fallback_zone_anchors = [
+            a for a in candidate_anchors
+            if a.source_zone in fallback_zones and a not in prefer_zone_anchors
+        ]
+        other_anchors = [
+            a for a in candidate_anchors
+            if a not in prefer_zone_anchors and a not in fallback_zone_anchors
+        ]
+        
+        # Собираем финальный список: сначала prefer, затем fallback, затем остальные
+        final_anchors = prefer_zone_anchors + fallback_zone_anchors + other_anchors
+        anchor_ids = [a.anchor_id for a in final_anchors]
+        
+        # Собираем статистику по зонам
+        by_zone_stats: dict[str, int] = {}
+        for anchor in final_anchors:
+            zone = anchor.source_zone or "unknown"
+            by_zone_stats[zone] = by_zone_stats.get(zone, 0) + 1
+        
         logger.debug(
             "SectionMapping: capture_heading_block collected "
-            f"(section_key={contract.section_key}, anchors_in_block={len(anchor_ids)})"
+            f"(target_section={contract.target_section}, anchors_in_block={len(anchor_ids)}, "
+            f"prefer_zones={prefer_zones}, fallback_zones={fallback_zones}, "
+            f"by_zone={by_zone_stats})"
         )
 
         # Вычисляем confidence с учетом языка
         recipe = contract.retrieval_recipe_json
         signals, _signals_source = self._get_effective_signals(
             contract=contract,
-            recipe_json=recipe,
+            recipe_json=recipe or {},
             document_language=document_language,
         )
 
@@ -1380,12 +1490,12 @@ class SectionMappingService:
         notes = f"Matched heading: {heading_anchor.text_norm[:100]} (score={heading_candidate.score:.1f}, {heading_candidate.reason})"
         logger.debug(
             "SectionMapping: capture_heading_block confidence "
-            f"(section_key={contract.section_key}, confidence={confidence:.2f}, "
+            f"(target_section={contract.target_section}, confidence={confidence:.2f}, "
             f"has_regex_match={has_regex_match}, has_must_match={has_must_match}, "
             f"confidence_cap={signals.confidence_cap})"
         )
 
-        return anchor_ids, confidence, notes
+        return anchor_ids, confidence, notes, by_zone_stats
 
     async def _resolve_conflicts(
         self, doc_version_id: UUID, section_maps: list[SectionMap]

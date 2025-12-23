@@ -155,4 +155,26 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class SourceZone(str, Enum):
+    """Канонические зоны источника для anchors и chunks.
+    
+    12 основных секций + unknown для неклассифицированного контента.
+    Используется как для source_zone (откуда пришёл текст), так и для target_section (куда идёт генерация).
+    """
+    
+    OVERVIEW = "overview"
+    DESIGN = "design"
+    IP = "ip"
+    STATISTICS = "statistics"
+    SAFETY = "safety"
+    ENDPOINTS = "endpoints"
+    POPULATION = "population"
+    PROCEDURES = "procedures"
+    DATA_MANAGEMENT = "data_management"
+    ETHICS = "ethics"
+    ADMIN = "admin"
+    APPENDIX = "appendix"
+    UNKNOWN = "unknown"
+
+
 

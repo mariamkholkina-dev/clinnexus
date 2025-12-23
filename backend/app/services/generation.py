@@ -7,11 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.logging import logger
-from app.db.models.generation import GenerationRun, GeneratedSection, Template
-from app.db.models.sections import SectionContract
+from app.db.models.generation import GenerationRun, GeneratedTargetSection, Template
+from app.db.models.sections import TargetSectionContract
 from app.db.models.anchors import Anchor
-from app.db.models.facts import Fact
-from app.db.enums import GenerationStatus, QCStatus
+from app.db.models.facts import Fact, FactEvidence
+from app.db.enums import FactStatus, GenerationStatus, QCStatus
 from app.schemas.generation import (
     ArtifactsSchema,
     ClaimArtifact,
@@ -21,6 +21,7 @@ from app.schemas.generation import (
     QCErrorSchema,
 )
 from app.services.lean_passport import LeanContextBuilder, normalize_passport
+from app.services.core_facts_extractor import CoreFactsExtractor
 
 
 class GenerationService:
@@ -54,9 +55,9 @@ class GenerationService:
             raise ValueError(f"Template {req.template_id} не найден")
 
         # Получаем contract
-        contract = await self.db.get(SectionContract, req.contract_id)
+        contract = await self.db.get(TargetSectionContract, req.contract_id)
         if not contract:
-            raise ValueError(f"SectionContract {req.contract_id} не найден")
+            raise ValueError(f"TargetSectionContract {req.contract_id} не найден")
 
         passport = normalize_passport(
             required_facts_json=contract.required_facts_json,
@@ -92,7 +93,7 @@ class GenerationService:
             )
             self.db.add(generation_run)
             await self.db.flush()
-            generated_section = GeneratedSection(
+            generated_section = GeneratedTargetSection(
                 generation_run_id=generation_run.id,
                 content_text="",
                 artifacts_json=ArtifactsSchema().model_dump(),
@@ -133,15 +134,53 @@ class GenerationService:
             source_doc_version_ids=req.source_doc_version_ids,
         )
 
+        # Получаем core facts для включения в промпт
+        core_facts_extractor = CoreFactsExtractor(self.db)
+        core_facts = await core_facts_extractor.get_latest_core_facts(req.study_id)
+        core_facts_json = core_facts.facts_json if core_facts else {}
+
+        # Формируем промпт с core facts
+        # В реальной реализации это будет частью LLM промпта
+        core_facts_prompt = self._format_core_facts_for_prompt(core_facts_json)
+
         # TODO: Здесь будет инстанцирование LLM-клиента с учётом BYO ключа (byo_key),
         # без логирования/персистинга ключа и с безопасной конфигурацией провайдера.
+        # В промпт LLM должен быть включен:
+        # - core_facts_json (компактный JSON)
+        # - Инструкция: "Hard constraints: do not contradict these facts; if conflict found in sources, mark conflict instead of guessing."
 
         # MVP one-shot structured output:
         # В полноценном режиме здесь должен быть LLM, но для MVP-каркаса
         # делаем детерминированный черновик, чтобы QC мог отработать.
         content_text = template.template_body if getattr(template, "template_body", None) else ""
         if not content_text:
-            content_text = f"Черновик секции {req.section_key}.\n\n{context_text[:2000]}"
+            # Включаем core facts в контекст для демонстрации
+            content_text = f"Черновик секции {req.section_key}.\n\n{core_facts_prompt}\n\n{context_text[:2000]}"
+
+        # Пост-процессинг: замена плейсхолдеров {{fact:fact_key}} на реальные значения
+        content_text, fact_anchor_ids = await self._replace_fact_placeholders(
+            content_text=content_text,
+            study_id=req.study_id,
+            core_facts_json=core_facts_json,
+        )
+
+        # Проверяем конфликты между core facts и контекстом
+        detected_conflicts = await self._detect_conflicts_with_core_facts(
+            core_facts_json=core_facts_json,
+            context_text=context_text,
+            study_id=req.study_id,
+        )
+
+        # Объединяем anchor_ids из контекста и из фактов
+        all_citation_anchor_ids = list(used_anchor_ids[:10])
+        all_citation_anchor_ids.extend(fact_anchor_ids)
+        # Удаляем дубликаты с сохранением порядка
+        seen_citations: set[str] = set()
+        unique_citations: list[str] = []
+        for aid in all_citation_anchor_ids:
+            if aid not in seen_citations:
+                seen_citations.add(aid)
+                unique_citations.append(aid)
 
         artifacts = ArtifactsSchema(
             claim_items=[
@@ -152,7 +191,9 @@ class GenerationService:
                     numbers=[],
                 )
             ],
-            citations=used_anchor_ids[:10],
+            citations=unique_citations,
+            core_facts_used=bool(core_facts_json),
+            detected_conflicts=detected_conflicts,
         )
 
         # Вызываем валидацию
@@ -165,11 +206,23 @@ class GenerationService:
             source_doc_version_ids=req.source_doc_version_ids,
         )
 
-        # Обновляем статус
-        generation_run.status = GenerationStatus.COMPLETED
+        # Обновляем artifacts с конфликтами из QC (если есть)
+        # Конфликты уже добавлены в artifacts_json внутри ValidationService
 
-        # Создаём GeneratedSection
-        generated_section = GeneratedSection(
+        # Обновляем статус
+        if qc_report.status == QCStatus.BLOCKED:
+            generation_run.status = GenerationStatus.BLOCKED
+        else:
+            generation_run.status = GenerationStatus.COMPLETED
+
+        # Сохраняем конфликты в input_snapshot_json для трассировки
+        if artifacts.detected_conflicts:
+            if "conflicts" not in generation_run.input_snapshot_json:
+                generation_run.input_snapshot_json["conflicts"] = []
+            generation_run.input_snapshot_json["conflicts"] = artifacts.detected_conflicts
+
+        # Создаём GeneratedTargetSection
+        generated_section = GeneratedTargetSection(
             generation_run_id=generation_run.id,
             content_text=content_text,
             artifacts_json=artifacts.model_dump(),
@@ -191,6 +244,303 @@ class GenerationService:
             generation_run_id=generation_run.id,
         )
 
+    def _format_core_facts_for_prompt(self, core_facts_json: dict[str, Any]) -> str:
+        """Форматирует core facts для включения в промпт LLM."""
+        if not core_facts_json:
+            return ""
+
+        lines = ["=== Основные факты исследования (Hard Constraints) ==="]
+        lines.append("Эти факты должны быть согласованы во всех секциях. При обнаружении конфликта в источниках - пометьте конфликт вместо угадывания.")
+        lines.append("")
+        lines.append("ВАЖНО: Используй формат {{fact:ключ}}, когда пишешь о параметрах исследования (N, дозы, фаза), если они есть в Core Facts.")
+        lines.append("Например: {{fact:sample_size}}, {{fact:phase}}, {{fact:primary_endpoint_1}}.")
+        lines.append("")
+
+        if core_facts_json.get("study_title"):
+            lines.append(f"Название исследования: {core_facts_json['study_title']}")
+
+        if core_facts_json.get("phase"):
+            lines.append(f"Фаза: {core_facts_json['phase']}")
+
+        if core_facts_json.get("study_design_type"):
+            lines.append(f"Тип дизайна: {core_facts_json['study_design_type']}")
+
+        if core_facts_json.get("sample_size"):
+            sample = core_facts_json["sample_size"]
+            lines.append(f"Размер выборки: {sample.get('value')} {sample.get('unit', '')}")
+
+        if core_facts_json.get("primary_endpoints"):
+            endpoints = core_facts_json["primary_endpoints"]
+            lines.append(f"Первичные endpoints: {', '.join(endpoints[:5])}")
+
+        if core_facts_json.get("arms"):
+            arms = core_facts_json["arms"]
+            arm_names = [a.get("name", "") for a in arms if a.get("name")]
+            if arm_names:
+                lines.append(f"Группы исследования: {', '.join(arm_names)}")
+
+        lines.append("")
+        return "\n".join(lines)
+
+    async def _detect_conflicts_with_core_facts(
+        self,
+        *,
+        core_facts_json: dict[str, Any],
+        context_text: str,
+        study_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """
+        Обнаруживает конфликты между core facts и контекстом/источниками.
+
+        MVP: упрощенная проверка на основе ключевых чисел и названий.
+        """
+        conflicts: list[dict[str, Any]] = []
+
+        if not core_facts_json:
+            return conflicts
+
+        # Проверяем sample_size
+        if core_facts_json.get("sample_size"):
+            expected_n = core_facts_json["sample_size"].get("value")
+            if expected_n:
+                # Ищем упоминания N в контексте
+                import re
+                n_patterns = [
+                    re.compile(rf"\bN\s*=\s*(\d+)\b", re.IGNORECASE),
+                    re.compile(rf"\b(?:total|всего)\s+(\d+)\s+(?:participants|участников)\b", re.IGNORECASE),
+                ]
+                for pattern in n_patterns:
+                    matches = pattern.findall(context_text)
+                    for match in matches:
+                        found_n = int(match)
+                        if found_n != expected_n:
+                            conflicts.append({
+                                "fact_key": "sample_size",
+                                "expected": expected_n,
+                                "found": found_n,
+                                "severity": "high",
+                            })
+                            break
+
+        # Проверяем primary_endpoints
+        if core_facts_json.get("primary_endpoints"):
+            expected_endpoints = set(core_facts_json["primary_endpoints"])
+            # Упрощенная проверка: ищем упоминания endpoints в контексте
+            # В реальной реализации это должно быть более сложным
+            pass
+
+        return conflicts
+
+    async def _replace_fact_placeholders(
+        self,
+        content_text: str,
+        study_id: UUID,
+        core_facts_json: dict[str, Any],
+    ) -> tuple[str, list[str]]:
+        """
+        Заменяет плейсхолдеры {{fact:fact_key}} на реальные значения из фактов.
+        
+        Args:
+            content_text: Текст с плейсхолдерами
+            study_id: ID исследования
+            core_facts_json: Core facts из CoreFactsExtractor
+            
+        Returns:
+            (обновленный текст, список anchor_id из фактов для citations)
+        """
+        import re
+        
+        # Регулярное выражение для поиска плейсхолдеров {{fact:fact_key}}
+        placeholder_pattern = re.compile(r'\{\{fact:([^}]+)\}\}')
+        
+        fact_anchor_ids: list[str] = []
+        replacements: list[tuple[str, str]] = []  # (placeholder, replacement)
+        
+        # Находим все плейсхолдеры
+        matches = placeholder_pattern.findall(content_text)
+        unique_fact_keys = list(set(matches))
+        
+        if not unique_fact_keys:
+            return content_text, []
+        
+        # Ищем факты для каждого fact_key
+        for fact_key in unique_fact_keys:
+            fact_value = None
+            fact_anchor_ids_for_key: list[str] = []
+            
+            # Сначала проверяем core_facts_json
+            if core_facts_json:
+                fact_value = self._get_fact_value_from_core_facts(core_facts_json, fact_key)
+            
+            # Если не найдено в core_facts_json, ищем в таблице facts
+            if fact_value is None:
+                fact_value, fact_anchor_ids_for_key = await self._get_fact_from_db(
+                    study_id=study_id,
+                    fact_key=fact_key,
+                )
+            
+            if fact_value is not None:
+                # Заменяем плейсхолдер на значение
+                placeholder = f"{{{{fact:{fact_key}}}}}"
+                replacements.append((placeholder, fact_value))
+                fact_anchor_ids.extend(fact_anchor_ids_for_key)
+                logger.debug(
+                    f"Заменён плейсхолдер {placeholder} на значение '{fact_value}' "
+                    f"(fact_key={fact_key}, anchors={len(fact_anchor_ids_for_key)})"
+                )
+            else:
+                logger.warning(
+                    f"Плейсхолдер {{fact:{fact_key}}} не найден в core_facts_json или таблице facts"
+                )
+        
+        # Выполняем замены
+        result_text = content_text
+        for placeholder, replacement in replacements:
+            result_text = result_text.replace(placeholder, replacement)
+        
+        # Удаляем дубликаты anchor_ids
+        unique_anchor_ids = list(dict.fromkeys(fact_anchor_ids))  # Сохраняет порядок
+        
+        return result_text, unique_anchor_ids
+
+    def _get_fact_value_from_core_facts(
+        self,
+        core_facts_json: dict[str, Any],
+        fact_key: str,
+    ) -> str | None:
+        """
+        Извлекает значение факта из core_facts_json.
+        
+        Args:
+            core_facts_json: JSON с core facts
+            fact_key: Ключ факта для поиска
+            
+        Returns:
+            Отформатированное значение или None
+        """
+        # Прямое совпадение ключа
+        if fact_key in core_facts_json:
+            value = core_facts_json[fact_key]
+            return self._format_fact_value(value)
+        
+        # Специальные случаи для известных ключей
+        if fact_key == "sample_size" and "sample_size" in core_facts_json:
+            sample = core_facts_json["sample_size"]
+            if isinstance(sample, dict):
+                value = sample.get("value")
+                unit = sample.get("unit", "")
+                if value is not None:
+                    return f"{value} {unit}".strip()
+        
+        if fact_key == "phase" and "phase" in core_facts_json:
+            phase = core_facts_json["phase"]
+            if phase:
+                return str(phase)
+        
+        if fact_key.startswith("primary_endpoint_"):
+            # primary_endpoint_1, primary_endpoint_2 и т.д.
+            if "primary_endpoints" in core_facts_json:
+                endpoints = core_facts_json["primary_endpoints"]
+                if isinstance(endpoints, list):
+                    try:
+                        idx = int(fact_key.split("_")[-1]) - 1
+                        if 0 <= idx < len(endpoints):
+                            return str(endpoints[idx])
+                    except (ValueError, IndexError):
+                        pass
+        
+        # Проверяем вложенные структуры (например, arms)
+        if "arms" in core_facts_json:
+            arms = core_facts_json["arms"]
+            if isinstance(arms, list):
+                for arm in arms:
+                    if isinstance(arm, dict) and arm.get("name") == fact_key:
+                        return arm.get("name", "")
+        
+        return None
+
+    async def _get_fact_from_db(
+        self,
+        study_id: UUID,
+        fact_key: str,
+    ) -> tuple[str | None, list[str]]:
+        """
+        Получает факт из таблицы facts по study_id и fact_key.
+        
+        Args:
+            study_id: ID исследования
+            fact_key: Ключ факта
+            
+        Returns:
+            (отформатированное значение, список anchor_id из evidence)
+        """
+        # Ищем факт с подходящим статусом (validated или extracted)
+        stmt = (
+            select(Fact)
+            .where(
+                Fact.study_id == study_id,
+                Fact.fact_key == fact_key,
+                Fact.status.in_([FactStatus.VALIDATED, FactStatus.EXTRACTED]),
+            )
+            .order_by(Fact.status.desc(), Fact.updated_at.desc())  # Приоритет validated
+        )
+        result = await self.db.execute(stmt)
+        fact = result.scalars().first()
+        
+        if not fact:
+            return None, []
+        
+        # Форматируем значение
+        formatted_value = self._format_fact_value(fact.value_json, fact.unit)
+        
+        # Получаем anchor_ids из evidence
+        evidence_stmt = select(FactEvidence.anchor_id).where(
+            FactEvidence.fact_id == fact.id
+        )
+        evidence_result = await self.db.execute(evidence_stmt)
+        anchor_ids = [row[0] for row in evidence_result.all()]
+        
+        return formatted_value, anchor_ids
+
+    def _format_fact_value(
+        self,
+        value_json: dict[str, Any] | Any,
+        unit: str | None = None,
+    ) -> str:
+        """
+        Форматирует значение факта из value_json в читаемую строку.
+        
+        Args:
+            value_json: JSON значение факта
+            unit: Единица измерения (опционально)
+            
+        Returns:
+            Отформатированная строка
+        """
+        if isinstance(value_json, dict):
+            # Если это словарь, пытаемся извлечь значение
+            if "value" in value_json:
+                value = value_json["value"]
+            elif "name" in value_json:
+                value = value_json["name"]
+            elif len(value_json) == 1:
+                # Если один ключ, используем его значение
+                value = next(iter(value_json.values()))
+            else:
+                # Множественные поля - форматируем как JSON
+                import json
+                value = json.dumps(value_json, ensure_ascii=False)
+        elif isinstance(value_json, list):
+            # Список - объединяем через запятую
+            value = ", ".join(str(v) for v in value_json)
+        else:
+            value = str(value_json)
+        
+        # Добавляем единицу измерения, если есть
+        if unit:
+            return f"{value} {unit}".strip()
+        return str(value)
+
 
 class ValidationService:
     """Сервис для валидации сгенерированного контента."""
@@ -210,21 +560,21 @@ class ValidationService:
         Валидирует сгенерированный контент по правилам из contract.
 
         TODO: Реальная реализация должна:
-        - Получить qc_ruleset_json из SectionContract
+        - Получить qc_ruleset_json из TargetSectionContract
         - Проверить соответствие required_facts_json
         - Проверить citation_policy
         - Вернуть QCReport с ошибками
         """
         logger.info(f"Валидация контента по contract {contract_id}")
 
-        contract = await self.db.get(SectionContract, contract_id)
+        contract = await self.db.get(TargetSectionContract, contract_id)
         if not contract:
             return QCReportSchema(
                 status=QCStatus.FAILED,
                 errors=[
                     QCErrorSchema(
                         type="contract_not_found",
-                        message=f"SectionContract {contract_id} не найден",
+                        message=f"TargetSectionContract {contract_id} не найден",
                     )
                 ],
             )
@@ -324,6 +674,53 @@ class ValidationService:
                     )
                 )
 
+        # 6) check_zone_conflicts: проверка конфликтов фактов из разных source_zone
+        blocking_conflicts: list[dict[str, Any]] = []
+        if study_id is not None and passport.qc_ruleset.check_zone_conflicts:
+            from app.services.fact_conflict_detector import FactConflictDetector
+
+            conflict_detector = FactConflictDetector(self.db)
+            conflict_result = await conflict_detector.detect(
+                study_id=study_id,
+                doc_version_ids=source_doc_version_ids,
+                prefer_source_zones=passport.retrieval_recipe.prefer_source_zones or [],
+            )
+
+            if conflict_result.conflicts:
+                # Сохраняем конфликты в artifacts для трассировки (если artifacts - это объект)
+                if hasattr(artifacts, "detected_conflicts"):
+                    artifacts.detected_conflicts.extend([c.model_dump() for c in conflict_result.conflicts])
+                # Также сохраняем в artifacts_json для совместимости
+                if "detected_conflicts" not in artifacts_json:
+                    artifacts_json["detected_conflicts"] = []
+                artifacts_json["detected_conflicts"].extend([c.model_dump() for c in conflict_result.conflicts])
+
+                # Формируем ошибки QC
+                for conflict in conflict_result.conflicts:
+                    if conflict.severity == "block":
+                        blocking_conflicts.append(conflict.model_dump())
+                        errors.append(
+                            QCErrorSchema(
+                                type="fact_conflict",
+                                message=f"Обнаружен конфликт факта '{conflict.fact_key}': {len(conflict.values)} различных значений",
+                                anchor_ids=[
+                                    aid for ev in conflict.evidence for aid in ev.anchor_ids
+                                ],
+                                details=conflict.model_dump(),
+                            )
+                        )
+                    else:
+                        errors.append(
+                            QCErrorSchema(
+                                type="fact_conflict_warning",
+                                message=f"Предупреждение: возможный конфликт факта '{conflict.fact_key}'",
+                                anchor_ids=[
+                                    aid for ev in conflict.evidence for aid in ev.anchor_ids
+                                ],
+                                details=conflict.model_dump(),
+                            )
+                        )
+
         status = QCStatus.PASSED if not errors else QCStatus.FAILED
         # Gate policy MVP: missing_required_fact -> blocked, low_mapping_confidence -> blocked
         for e in errors:
@@ -336,9 +733,17 @@ class ValidationService:
             if e.type in ("claim_missing_citation", "missing_claim_items"):
                 if passport.qc_ruleset.gate_policy.on_citation_missing == "fail":
                     status = QCStatus.FAILED
+            if e.type == "fact_conflict":
+                # Конфликты фактов -> BLOCKED + задача resolve_conflict
+                status = QCStatus.BLOCKED
 
         qc_report = QCReportSchema(status=status, errors=errors)
         logger.info(f"Валидация завершена: {qc_report.status}")
+
+        # Создаём задачи для блокирующих конфликтов
+        if blocking_conflicts and study_id is not None:
+            await self._create_conflict_tasks(study_id=study_id, conflicts=blocking_conflicts)
+
         return qc_report
 
     def _collect_anchor_ids(self, artifacts: ArtifactsSchema) -> list[str]:
@@ -452,3 +857,56 @@ class ValidationService:
                         }
                     )
         return mismatches
+
+    async def _create_conflict_tasks(
+        self,
+        *,
+        study_id: UUID,
+        conflicts: list[dict[str, Any]],
+    ) -> None:
+        """Создаёт задачи для разрешения конфликтов фактов."""
+        from app.db.enums import TaskStatus, TaskType
+        from app.db.models.change import Task
+
+        for conflict in conflicts:
+            fact_key = conflict.get("fact_key", "unknown")
+            evidence_list = conflict.get("evidence", [])
+            values = conflict.get("values", [])
+
+            # Формируем описание конфликта
+            value_descriptions = []
+            for val in values:
+                val_str = str(val.get("value", "N/A"))
+                if val.get("is_low_confidence"):
+                    val_str += " (низкая уверенность)"
+                value_descriptions.append(val_str)
+
+            description = f"Обнаружен конфликт факта '{fact_key}': найдено {len(values)} различных значений.\n\n"
+            description += "Значения:\n"
+            for i, val_desc in enumerate(value_descriptions, 1):
+                description += f"  {i}. {val_desc}\n"
+
+            description += "\nИсточники:\n"
+            anchor_ids_all: list[str] = []
+            for ev in evidence_list:
+                zones = ev.get("source_zone", "unknown")
+                anchor_ids = ev.get("anchor_ids", [])
+                anchor_ids_all.extend(anchor_ids)
+                description += f"  - Зона '{zones}': {len(anchor_ids)} anchor(s)\n"
+
+            # Создаём задачу
+            task = Task(
+                study_id=study_id,
+                type=TaskType.RESOLVE_CONFLICT,
+                status=TaskStatus.OPEN,
+                payload_json={
+                    "fact_key": fact_key,
+                    "conflict": conflict,
+                    "anchor_ids": list(set(anchor_ids_all)),
+                    "description": description,
+                },
+            )
+            self.db.add(task)
+            logger.info(f"Создана задача resolve_conflict для fact_key={fact_key}, study_id={study_id}")
+
+        await self.db.flush()

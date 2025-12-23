@@ -224,29 +224,47 @@ class TestDocxIngestion:
         doc_version_id_str = str(test_version_with_docx.id)
         
         for anchor in anchors:
-            # Формат: {doc_version_id}:{section_path}:{content_type}:{ordinal}:{hash}
             parts = anchor.anchor_id.split(":")
-            assert len(parts) == 5, f"Неверный формат anchor_id: {anchor.anchor_id}"
             
-            anchor_doc_version_id, section_path, content_type_str, ordinal_str, text_hash = parts
+            if anchor.content_type == AnchorContentType.FN:
+                # Формат для footnotes: {doc_version_id}:fn:{fn_index}:{fn_para_index}:{text_hash}
+                assert len(parts) == 5, f"Неверный формат anchor_id для footnote: {anchor.anchor_id}"
+                anchor_doc_version_id, fn_prefix, fn_index_str, fn_para_index_str, text_hash = parts
+                
+                # Проверяем префикс для footnotes
+                assert fn_prefix == "fn", f"Ожидается 'fn' для footnote, получено: {fn_prefix}"
+                
+                # Проверяем индексы
+                assert fn_index_str.isdigit()
+                assert fn_para_index_str.isdigit()
+                
+                # Проверяем соответствие location_json
+                assert anchor.location_json.get("fn_index") == int(fn_index_str)
+                assert anchor.location_json.get("fn_para_index") == int(fn_para_index_str)
+            else:
+                # Формат для paragraph-anchors: {doc_version_id}:{content_type}:{para_index}:{text_hash}
+                assert len(parts) == 4, f"Неверный формат anchor_id для paragraph: {anchor.anchor_id}"
+                anchor_doc_version_id, content_type_str, para_index_str, text_hash = parts
+                
+                # Проверяем content_type
+                assert content_type_str in ["p", "li", "hdr"]
+                assert anchor.content_type.value == content_type_str
+                
+                # Проверяем para_index (должен быть числом)
+                assert para_index_str.isdigit()
+                para_index = int(para_index_str)
+                assert para_index == anchor.location_json.get("para_index")
             
             # Проверяем doc_version_id
             assert anchor_doc_version_id == doc_version_id_str
-            
-            # Проверяем content_type
-            assert content_type_str in ["p", "li", "hdr"]
-            assert anchor.content_type.value == content_type_str
-            
-            # Проверяем ordinal (должен быть числом)
-            assert ordinal_str.isdigit()
-            assert int(ordinal_str) == anchor.ordinal
             
             # Проверяем hash (64 символа hex)
             assert len(text_hash) == 64
             assert all(c in "0123456789abcdef" for c in text_hash)
             
-            # Проверяем section_path
-            assert anchor.section_path == section_path
+            # Проверяем, что section_path НЕ входит в anchor_id
+            assert anchor.section_path not in anchor.anchor_id, \
+                f"section_path не должен быть частью anchor_id, но найден: {anchor.section_path}"
     
     @pytest.mark.asyncio
     async def test_docx_ingestion_summary_counts(
@@ -352,4 +370,123 @@ class TestDocxIngestion:
             assert isinstance(location["para_index"], int)
             assert location["para_index"] > 0
             assert location["section_path"] == anchor.section_path
+    
+    @pytest.mark.asyncio
+    async def test_anchor_id_stability_with_section_path_change(
+        self, db: AsyncSession, test_document: Document
+    ):
+        """
+        Тест стабильности anchor_id при изменении section_path.
+        
+        Проверяет, что при одинаковом тексте и para_index anchor_id совпадает,
+        даже если section_path отличается.
+        """
+        from app.services.ingestion.docx_ingestor import DocxIngestor
+        from uuid import uuid4
+        import tempfile
+        
+        # Создаём два документа с одинаковым содержимым параграфов,
+        # но разной структурой заголовков (разный section_path)
+        
+        # Документ 1: "Section A" -> "Paragraph 1"
+        tmp_file1 = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path1 = Path(tmp_file1.name)
+        tmp_file1.close()
+        
+        doc1 = DocxDocument()
+        doc1.add_paragraph("Section A", style="Heading 1")
+        doc1.add_paragraph("Paragraph 1")  # para_index = 2
+        doc1.save(str(tmp_path1))
+        
+        # Документ 2: "Section B" -> "Subsection" -> "Paragraph 1"
+        # Тот же текст параграфа, но другой section_path
+        tmp_file2 = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp_path2 = Path(tmp_file2.name)
+        tmp_file2.close()
+        
+        doc2 = DocxDocument()
+        doc2.add_paragraph("Section B", style="Heading 1")
+        doc2.add_paragraph("Subsection", style="Heading 2")
+        doc2.add_paragraph("Paragraph 1")  # para_index = 3 (но текст тот же)
+        doc2.save(str(tmp_path2))
+        
+        try:
+            doc_version_id = uuid4()
+            ingestor = DocxIngestor()
+            
+            # Обрабатываем первый документ
+            result1 = ingestor.ingest(tmp_path1, doc_version_id)
+            
+            # Обрабатываем второй документ (с другим doc_version_id, чтобы проверить логику)
+            # Но на самом деле, нам нужно проверить, что при одинаковом para_index и тексте
+            # anchor_id будет одинаковым. Для этого используем тот же doc_version_id,
+            # но создадим документ с теми же параграфами, но разными заголовками.
+            
+            # Найдём параграф "Paragraph 1" в первом результате
+            para1_anchor1 = None
+            for anchor in result1.anchors:
+                if anchor.text_norm == "Paragraph 1" and anchor.content_type == AnchorContentType.P:
+                    para1_anchor1 = anchor
+                    break
+            
+            assert para1_anchor1 is not None, "Не найден параграф 'Paragraph 1' в первом документе"
+            
+            # Проверяем, что anchor_id не содержит section_path
+            assert para1_anchor1.section_path not in para1_anchor1.anchor_id
+            
+            # Проверяем формат: {doc_version_id}:{content_type}:{para_index}:{text_hash}
+            parts = para1_anchor1.anchor_id.split(":")
+            assert len(parts) == 4
+            assert parts[0] == str(doc_version_id)
+            assert parts[1] == AnchorContentType.P.value
+            assert parts[2] == str(para1_anchor1.location_json["para_index"])
+            
+            # Теперь создадим документ, где параграф "Paragraph 1" имеет тот же para_index
+            # (нужно создать документ без лишних параграфов перед ним)
+            tmp_file3 = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+            tmp_path3 = Path(tmp_file3.name)
+            tmp_file3.close()
+            
+            doc3 = DocxDocument()
+            doc3.add_paragraph("Different Section", style="Heading 1")  # Другой заголовок
+            doc3.add_paragraph("Paragraph 1")  # Тот же текст, тот же para_index = 2
+            doc3.save(str(tmp_path3))
+            
+            # Используем другой doc_version_id, но с тем же текстом и para_index
+            # anchor_id должен иметь тот же text_hash, но другой doc_version_id
+            # Для полной проверки стабильности используем тот же doc_version_id
+            result3 = ingestor.ingest(tmp_path3, doc_version_id)
+            
+            # Найдём параграф "Paragraph 1" во втором результате
+            para1_anchor3 = None
+            for anchor in result3.anchors:
+                if anchor.text_norm == "Paragraph 1" and anchor.content_type == AnchorContentType.P:
+                    para1_anchor3 = anchor
+                    break
+            
+            assert para1_anchor3 is not None, "Не найден параграф 'Paragraph 1' во втором документе"
+            
+            # Проверяем, что para_index совпадает
+            assert para1_anchor1.location_json["para_index"] == para1_anchor3.location_json["para_index"]
+            
+            # Проверяем, что text_hash совпадает (текст одинаковый)
+            assert para1_anchor1.text_hash == para1_anchor3.text_hash
+            
+            # Проверяем, что anchor_id совпадает (при одинаковом doc_version_id, content_type, para_index и text_hash)
+            assert para1_anchor1.anchor_id == para1_anchor3.anchor_id, \
+                f"anchor_id должен совпадать при одинаковом тексте и para_index, " \
+                f"но отличается: {para1_anchor1.anchor_id} vs {para1_anchor3.anchor_id}"
+            
+            # Проверяем, что section_path отличается (что и ожидается)
+            assert para1_anchor1.section_path != para1_anchor3.section_path, \
+                "section_path должен отличаться, но совпадает"
+            
+        finally:
+            # Удаляем временные файлы
+            if tmp_path1.exists():
+                tmp_path1.unlink()
+            if tmp_path2.exists():
+                tmp_path2.unlink()
+            if tmp_path3.exists():
+                tmp_path3.unlink()
 

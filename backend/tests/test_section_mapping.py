@@ -25,7 +25,7 @@ from app.db.enums import (
 )
 from app.db.models.anchors import Anchor
 from app.db.models.auth import Workspace
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document as DocumentModel, DocumentVersion, Study
 from app.services.section_mapping import SectionMappingService
 
@@ -91,13 +91,13 @@ class TestSectionMapping:
     @pytest.fixture
     async def test_section_contracts(
         self, db: AsyncSession, test_workspace: Workspace
-    ) -> list[SectionContract]:
+    ) -> list[TargetSectionContract]:
         """Создает тестовые Section Contracts для протокола."""
         contracts = [
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=test_workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.objectives",
+                target_section="protocol.objectives",
                 title="Objectives",
                 required_facts_json={"primary_objective": {"type": "string"}},
                 allowed_sources_json={"doc_types": ["protocol"]},
@@ -122,10 +122,10 @@ class TestSectionMapping:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=test_workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.soa",
+                target_section="protocol.soa",
                 title="Schedule of Activities",
                 required_facts_json={"visits": []},
                 allowed_sources_json={"doc_types": ["protocol"]},
@@ -150,10 +150,10 @@ class TestSectionMapping:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=test_workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.eligibility.inclusion",
+                target_section="protocol.eligibility.inclusion",
                 title="Inclusion Criteria",
                 required_facts_json={"criteria": []},
                 allowed_sources_json={"doc_types": ["protocol"]},
@@ -500,7 +500,7 @@ class TestSectionMapping:
         contract = SectionContract(
             workspace_id=test_workspace.id,
             doc_type=DocumentType.PROTOCOL,
-            section_key="protocol.treatments.dosing",
+            target_section="protocol.treatments.dosing",
             title="Treatments and Dosing",
             required_facts_json={},
             allowed_sources_json={},
@@ -750,7 +750,7 @@ class TestSectionMapping:
         contract = SectionContract(
             workspace_id=test_workspace.id,
             doc_type=DocumentType.PROTOCOL,
-            section_key="protocol.endpoints",
+            target_section="protocol.endpoints",
             title="Конечные точки (Endpoints)",
             required_facts_json={},
             allowed_sources_json={},

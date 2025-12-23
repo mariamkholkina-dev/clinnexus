@@ -20,7 +20,7 @@ from app.db.enums import (
     SectionMapStatus,
 )
 from app.db.models.anchors import Anchor
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document, DocumentVersion
 from app.services.llm_client import LLMClient
 from app.services.section_mapping import DocumentOutline, SectionMappingService
@@ -109,18 +109,18 @@ class SectionMappingAssistService:
 
         doc_type = document.doc_type
 
-        # 3. Получаем SectionContracts
-        contracts_stmt = select(SectionContract).where(
-            SectionContract.doc_type == doc_type,
-            SectionContract.section_key.in_(section_keys),
-            SectionContract.is_active == True,
+        # 3. Получаем TargetSectionContracts
+        contracts_stmt = select(TargetSectionContract).where(
+            TargetSectionContract.doc_type == doc_type,
+            TargetSectionContract.target_section.in_(section_keys),
+            TargetSectionContract.is_active == True,
         )
         contracts_result = await self.db.execute(contracts_stmt)
-        contracts = {c.section_key: c for c in contracts_result.scalars().all()}
+        contracts = {c.target_section: c for c in contracts_result.scalars().all()}
 
         missing_keys = set(section_keys) - set(contracts.keys())
         if missing_keys:
-            raise ValueError(f"SectionContracts не найдены для: {missing_keys}")
+            raise ValueError(f"TargetSectionContracts не найдены для: {missing_keys}")
 
         # 4. Получаем все anchors
         anchors_stmt = select(Anchor).where(Anchor.doc_version_id == doc_version_id)
@@ -138,11 +138,11 @@ class SectionMappingAssistService:
         outline = self.mapping_service._build_document_outline(all_anchors)
 
         # 6. Получаем существующие маппинги
-        existing_maps_stmt = select(SectionMap).where(
-            SectionMap.doc_version_id == doc_version_id
+        existing_maps_stmt = select(TargetSectionMap).where(
+            TargetSectionMap.doc_version_id == doc_version_id
         )
         existing_maps_result = await self.db.execute(existing_maps_stmt)
-        existing_maps = {m.section_key: m for m in existing_maps_result.scalars().all()}
+        existing_maps = {m.target_section: m for m in existing_maps_result.scalars().all()}
 
         # 7. Формируем payload для LLM
         headings_payload = self._build_headings_payload(outline, all_anchors)
@@ -345,7 +345,7 @@ class SectionMappingAssistService:
         return headings
 
     def _build_contracts_payload(
-        self, contracts: dict[str, SectionContract], document_language: DocumentLanguage
+        self, contracts: dict[str, TargetSectionContract], document_language: DocumentLanguage
     ) -> list[dict[str, Any]]:
         """Формирует payload контрактов для LLM с учетом языка документа."""
         contracts_list: list[dict[str, Any]] = []
@@ -411,19 +411,19 @@ class SectionMappingAssistService:
         self,
         doc_version_id: UUID,
         qc_reports: dict[str, SectionQCReport],
-        contracts: dict[str, SectionContract],
+        contracts: dict[str, TargetSectionContract],
         all_anchors: list[Anchor],
         outline: DocumentOutline,
-        existing_maps: dict[str, SectionMap],
+        existing_maps: dict[str, TargetSectionMap],
         request_id: str,
     ) -> None:
         """
-        Применяет маппинги в section_maps (только для status=mapped и derived_confidence >= 0.75).
+        Применяет маппинги в target_section_maps (только для status=mapped и derived_confidence >= 0.75).
 
         Args:
             doc_version_id: ID версии документа
             qc_reports: Отчёты QC для каждой секции
-            contracts: SectionContracts
+            contracts: TargetSectionContracts
             all_anchors: Все anchors
             outline: Структура документа
             existing_maps: Существующие маппинги
@@ -510,7 +510,7 @@ class SectionMappingAssistService:
                 )
                 continue
 
-            # Обновляем или создаём SectionMap
+            # Обновляем или создаём TargetSectionMap
             if section_key in existing_maps:
                 section_map = existing_maps[section_key]
                 section_map.anchor_ids = anchor_ids
@@ -522,9 +522,9 @@ class SectionMappingAssistService:
                     f"qc_status=mapped; confidence={confidence:.2f}"
                 )
             else:
-                section_map = SectionMap(
+                section_map = TargetSectionMap(
                     doc_version_id=doc_version_id,
-                    section_key=section_key,
+                    target_section=section_key,
                     anchor_ids=anchor_ids,
                     chunk_ids=None,
                     confidence=confidence,

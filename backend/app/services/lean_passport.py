@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger
 from app.db.enums import DocumentLifecycleStatus, DocumentType
 from app.db.models.anchors import Anchor
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document, DocumentVersion
 from app.schemas.sections import (
     AllowedSourcesMVP,
@@ -18,6 +18,7 @@ from app.schemas.sections import (
     RequiredFactsMVP,
     RetrievalRecipeMVP,
 )
+from app.services.zone_config import get_zone_config_service
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,7 @@ class LeanContextBuilder:
         self,
         *,
         study_id: UUID,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         source_doc_version_ids: list[UUID],
     ) -> tuple[str, list[str]]:
         """
@@ -103,9 +104,9 @@ class LeanContextBuilder:
             section_keys_to_use = [contract.section_key]
 
         # 3) Читаем section_maps и собираем anchor_ids
-        stmt_maps = select(SectionMap).where(
-            SectionMap.doc_version_id.in_(allowed_doc_version_ids),
-            SectionMap.section_key.in_(section_keys_to_use),
+        stmt_maps = select(TargetSectionMap).where(
+            TargetSectionMap.doc_version_id.in_(allowed_doc_version_ids),
+            TargetSectionMap.target_section.in_(section_keys_to_use),
         )
         maps_result = await self.db.execute(stmt_maps)
         maps = maps_result.scalars().all()
@@ -115,26 +116,96 @@ class LeanContextBuilder:
             if m.anchor_ids:
                 mapped_anchor_ids.extend(m.anchor_ids)
 
-        # 4) Загружаем anchors и фильтруем по content_type
+        # 4) Загружаем anchors и фильтруем по content_type и source_zone
         anchors = await self._load_anchors_by_anchor_ids(mapped_anchor_ids)
 
         prefer = passport.retrieval_recipe.prefer_content_types or []
+        prefer_zones = passport.retrieval_recipe.prefer_source_zones or []
+        fallback_zones = passport.retrieval_recipe.fallback_source_zones or []
+        prefer_lang = passport.retrieval_recipe.language.prefer_language
         max_chars = passport.retrieval_recipe.context_build.max_chars or 12000
 
         # allowed_content_types: если задано в dependency_sources, используем объединение
         allowed_ct = self._union_allowed_content_types(passport.allowed_sources)
 
+        # Фильтруем по content_type
         filtered = [
             a
             for a in anchors
             if (not allowed_ct or a.content_type.value in allowed_ct)
         ]
 
-        # Сортировка: prefer_content_types (например cell) первыми, затем ordinal
+        # Стратегия выбора зон: сначала пытаемся собрать из prefer_source_zones, если пусто - fallback_source_zones
+        # Также применяем zone_crosswalk для cross-doc retrieval
+        zone_config = get_zone_config_service()
+        
+        # Проверяем, нужен ли cross-doc retrieval (если dependency_sources содержит другой doc_type)
+        needs_crosswalk = False
+        source_doc_type = None
+        target_doc_type = contract.doc_type
+        
+        for ds in passport.allowed_sources.dependency_sources:
+            if ds.doc_type != target_doc_type:
+                needs_crosswalk = True
+                source_doc_type = ds.doc_type
+                break
+        
+        if needs_crosswalk and source_doc_type:
+            # Применяем zone_crosswalk для перевода зон
+            crosswalk_zones: list[str] = []
+            for source_zone in (prefer_zones or fallback_zones or []):
+                crosswalk_result = zone_config.get_crosswalk_zones(
+                    source_doc_type=source_doc_type,
+                    source_zone=source_zone,
+                    target_doc_type=target_doc_type,
+                )
+                # Берём топ-3 целевые зоны с наибольшим весом
+                top_target_zones = [zone for zone, _ in crosswalk_result[:3]]
+                crosswalk_zones.extend(top_target_zones)
+            
+            # Объединяем prefer_zones с переведёнными зонами
+            if crosswalk_zones:
+                prefer_zones = list(set(prefer_zones + crosswalk_zones))
+                logger.info(
+                    f"Применён zone_crosswalk: {source_doc_type} -> {target_doc_type}, "
+                    f"crosswalk_zones={crosswalk_zones}"
+                )
+        
+        if prefer_zones or fallback_zones:
+            # Разделяем anchors по зонам
+            prefer_zone_anchors = [
+                a for a in filtered
+                if a.source_zone in prefer_zones
+            ]
+            fallback_zone_anchors = [
+                a for a in filtered
+                if a.source_zone in fallback_zones and a not in prefer_zone_anchors
+            ]
+            
+            # Если есть anchors в prefer зонах - используем их, иначе fallback
+            if prefer_zone_anchors:
+                filtered = prefer_zone_anchors
+            elif fallback_zone_anchors:
+                filtered = fallback_zone_anchors
+            # Если обе пусты - используем все filtered (без фильтрации по зонам)
+
+        # Фильтрация по языку, если указан prefer_language
+        if prefer_lang and prefer_lang != "auto":
+            lang_filtered = [
+                a for a in filtered
+                if a.language.value == prefer_lang
+            ]
+            # Если нашли anchors с нужным языком - используем их, иначе все
+            if lang_filtered:
+                filtered = lang_filtered
+
+        # Сортировка: prefer_content_types (например cell) первыми, затем prefer_source_zones, затем ordinal
         prefer_rank = {ct: i for i, ct in enumerate(prefer)}
+        zone_rank = {zone: i for i, zone in enumerate(prefer_zones)}
         filtered.sort(
             key=lambda a: (
                 prefer_rank.get(a.content_type.value, 10_000),
+                zone_rank.get(a.source_zone, 10_000 if prefer_zones else 0),
                 a.ordinal,
             )
         )

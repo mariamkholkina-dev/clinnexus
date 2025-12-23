@@ -1,0 +1,62 @@
+# Приоритеты зон для различных топиков
+# Формат: {topic_key: {zone: priority}}
+# Приоритеты: 1.0 = максимальный, 0.0 = минимальный
+
+# Топики для протокола
+study_design:
+  design: 1.0
+  overview: 0.7
+  statistics: 0.5
+
+study_objectives:
+  endpoints: 1.0
+  overview: 0.8
+  design: 0.6
+
+eligibility_criteria:
+  population: 1.0
+  design: 0.6
+  overview: 0.4
+
+treatment_dosing:
+  ip: 1.0
+  procedures: 0.7
+  design: 0.5
+
+schedule_of_activities:
+  procedures: 1.0
+  design: 0.6
+  population: 0.4
+
+safety_monitoring:
+  safety: 1.0
+  procedures: 0.6
+  admin: 0.4
+
+statistical_methods:
+  statistics: 1.0
+  design: 0.7
+  endpoints: 0.5
+
+# Топики для CSR
+csr_synopsis:
+  overview: 1.0
+  design: 0.8
+  endpoints: 0.7
+  safety: 0.6
+
+csr_methods:
+  design: 1.0
+  statistics: 0.9
+  procedures: 0.6
+
+csr_results:
+  endpoints: 1.0
+  safety: 0.8
+  statistics: 0.9
+
+csr_discussion:
+  overview: 1.0
+  endpoints: 0.8
+  safety: 0.7
+

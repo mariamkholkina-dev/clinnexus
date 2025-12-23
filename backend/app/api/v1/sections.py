@@ -11,7 +11,7 @@ from app.api.deps import get_db
 from app.core.config import settings
 from app.core.errors import NotFoundError
 from app.core.logging import logger
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import DocumentVersion
 from app.db.enums import DocumentType, SectionMapMappedBy, SectionMapStatus
 from app.schemas.sections import (
@@ -26,6 +26,7 @@ from app.schemas.sections import (
 )
 from app.services.section_mapping import SectionMappingService
 from app.services.section_mapping_assist import SectionMappingAssistService
+from app.services.zone_config import get_zone_config_service
 
 router = APIRouter()
 
@@ -40,11 +41,11 @@ async def list_section_contracts(
     db: AsyncSession = Depends(get_db),
 ) -> list[SectionContractOut]:
     """Список контрактов секций."""
-    stmt = select(SectionContract)
+    stmt = select(TargetSectionContract)
     if doc_type:
-        stmt = stmt.where(SectionContract.doc_type == doc_type)
+        stmt = stmt.where(TargetSectionContract.doc_type == doc_type)
     if is_active is not None:
-        stmt = stmt.where(SectionContract.is_active == is_active)
+        stmt = stmt.where(TargetSectionContract.is_active == is_active)
 
     result = await db.execute(stmt)
     contracts = result.scalars().all()
@@ -71,7 +72,32 @@ async def create_section_contract(
                 "Используйте сидер паспортов из репозитория."
             ),
         )
-    contract = SectionContract(
+    
+    # Валидация prefer/fallback зон через zone_set
+    zone_config = get_zone_config_service()
+    retrieval_recipe = payload.retrieval_recipe_json
+    prefer_zones = retrieval_recipe.prefer_source_zones if retrieval_recipe else None
+    fallback_zones = retrieval_recipe.fallback_source_zones if retrieval_recipe else None
+    
+    is_valid, errors = zone_config.validate_zones(
+        doc_type=payload.doc_type,
+        prefer_zones=prefer_zones,
+        fallback_zones=fallback_zones,
+    )
+    
+    if not is_valid:
+        # Помечаем контракт как needs_review и логируем ошибки
+        logger.error(
+            f"Контракт {payload.section_key} содержит недопустимые зоны для doc_type={payload.doc_type}: {errors}"
+        )
+        # В MVP: всё равно создаём контракт, но помечаем как неактивный
+        # В production можно добавить поле needs_review в модель
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Недопустимые зоны в контракте: {'; '.join(errors)}",
+        )
+    
+    contract = TargetSectionContract(
         workspace_id=payload.workspace_id,
         doc_type=payload.doc_type,
         section_key=payload.section_key,
@@ -104,7 +130,7 @@ async def list_section_maps(
     if not version:
         raise NotFoundError("DocumentVersion", str(version_id))
 
-    stmt = select(SectionMap).where(SectionMap.doc_version_id == version_id)
+    stmt = select(TargetSectionMap).where(TargetSectionMap.doc_version_id == version_id)
     result = await db.execute(stmt)
     maps = result.scalars().all()
     return [SectionMapOut.model_validate(m) for m in maps]
@@ -127,9 +153,9 @@ async def override_section_map(
         raise NotFoundError("DocumentVersion", str(version_id))
 
     # Ищем существующий маппинг
-    stmt = select(SectionMap).where(
-        SectionMap.doc_version_id == version_id,
-        SectionMap.section_key == section_key,
+    stmt = select(TargetSectionMap).where(
+        TargetSectionMap.doc_version_id == version_id,
+        TargetSectionMap.target_section == section_key,
     )
     result = await db.execute(stmt)
     section_map = result.scalar_one_or_none()
@@ -146,9 +172,9 @@ async def override_section_map(
         section_map.mapped_by = SectionMapMappedBy.USER
     else:
         # Создаём новый
-        section_map = SectionMap(
+        section_map = TargetSectionMap(
             doc_version_id=version_id,
-            section_key=section_key,
+            target_section=section_key,
             anchor_ids=payload.anchor_ids,
             chunk_ids=payload.chunk_ids,
             confidence=1.0,  # Пользовательский маппинг имеет максимальный confidence

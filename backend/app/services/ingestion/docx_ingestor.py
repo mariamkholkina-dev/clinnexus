@@ -12,8 +12,13 @@ from docx import Document
 from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph
 
-from app.db.enums import AnchorContentType
+from app.db.enums import AnchorContentType, DocumentLanguage, DocumentType
 from app.services.ingestion.heading_detector import HeadingDetector, HeadingHit, DocStats
+from app.services.source_zone_classifier import get_classifier
+
+# Регулярные выражения для детекции языка
+_CYR_RE = re.compile(r"[А-Яа-яЁё]")
+_LAT_RE = re.compile(r"[A-Za-z]")
 
 
 def normalize_text(text: str) -> str:
@@ -54,6 +59,53 @@ def get_text_hash(text_norm: str) -> str:
         Hex-строка хеша (64 символа)
     """
     return hashlib.sha256(text_norm.encode('utf-8')).hexdigest()
+
+
+def get_text_with_context_hash(text_norm: str, section_path: str) -> str:
+    """
+    Вычисляет SHA256 хеш нормализованного текста с контекстом раздела.
+    Используется для создания стабильного anchor_id, инвариантного к перемещению внутри документа.
+    
+    Args:
+        text_norm: Нормализованный текст
+        section_path: Путь к разделу (используются первые 100 символов)
+        
+    Returns:
+        Hex-строка хеша (первые 16 символов из 64)
+    """
+    # Используем первые 100 символов section_path для контекста
+    context = section_path[:100]
+    # Объединяем текст и контекст для хеширования
+    combined = f"{text_norm}:{context}"
+    full_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+    # Возвращаем первые 16 символов хеша
+    return full_hash[:16]
+
+
+def detect_text_language(text: str) -> DocumentLanguage:
+    """
+    Быстрая локальная детекция языка из текста (regex на кириллицу/латиницу).
+    Используется для определения языка конкретного anchor/chunk.
+    """
+    if not text:
+        return DocumentLanguage.UNKNOWN
+    
+    cyr_count = len(_CYR_RE.findall(text))
+    lat_count = len(_LAT_RE.findall(text))
+    total_letters = cyr_count + lat_count
+    
+    if total_letters == 0:
+        return DocumentLanguage.UNKNOWN
+    
+    cyr_ratio = cyr_count / total_letters
+    
+    if cyr_ratio >= 0.7:
+        return DocumentLanguage.RU
+    elif cyr_ratio <= 0.3:
+        return DocumentLanguage.EN
+    else:
+        # Смешанный, если достаточно обеих букв
+        return DocumentLanguage.MIXED if cyr_count >= 10 and lat_count >= 10 else DocumentLanguage.UNKNOWN
 
 
 # Константа для титульной страницы (frontmatter)
@@ -129,6 +181,12 @@ class AnchorCreate:
     text_norm: str
     text_hash: str
     location_json: dict[str, Any]
+    source_zone: str = "unknown"
+    language: DocumentLanguage = DocumentLanguage.UNKNOWN
+
+
+# Версия DocxIngestor (увеличивается при изменении логики парсинга)
+VERSION = "1.0.0"
 
 
 @dataclass
@@ -143,13 +201,25 @@ class DocxIngestResult:
 class DocxIngestor:
     """Парсер DOCX документов для создания anchors."""
     
-    def ingest(self, file_path: str | Path, doc_version_id: UUID) -> DocxIngestResult:
+    def __init__(self) -> None:
+        """Инициализация DocxIngestor с классификатором source_zone."""
+        self.zone_classifier = get_classifier()
+    
+    def ingest(
+        self, 
+        file_path: str | Path, 
+        doc_version_id: UUID, 
+        document_language: DocumentLanguage,
+        doc_type: DocumentType
+    ) -> DocxIngestResult:
         """
         Парсит DOCX документ и создаёт anchors.
         
         Args:
             file_path: Путь к DOCX файлу
             doc_version_id: UUID версии документа
+            document_language: Язык документа
+            doc_type: Тип документа (определяет набор правил классификации source_zone)
             
         Returns:
             DocxIngestResult с anchors, summary и warnings
@@ -316,17 +386,20 @@ class DocxIngestor:
                     # До первого реального заголовка используем FRONTMATTER
                     current_section_path = FRONTMATTER_SECTION
             
-            # Получаем ordinal для данного (section_path, content_type)
+            # Получаем ordinal для данного (section_path, content_type) (используется только для поля ordinal, не для anchor_id)
             key = (current_section_path, content_type)
             ordinal = ordinal_counters.get(key, 0) + 1
             ordinal_counters[key] = ordinal
             
-            # Вычисляем hash
+            # Вычисляем hash текста с контекстом раздела для стабильного anchor_id
+            # Используем text_norm + section_path[:100] для различения одинаковых абзацев в разных разделах
             text_hash = get_text_hash(text_norm)
+            context_hash = get_text_with_context_hash(text_norm, current_section_path)
             
-            # Формируем anchor_id: {doc_version_id}:{section_path}:{content_type}:{ordinal}:{hash}
+            # Формируем anchor_id: {doc_version_id}:{content_type}:{get_text_hash(text_norm + current_section_path[:100])[:16]}
+            # ID инвариантен к перемещению внутри документа, если текст и раздел не изменились
             doc_version_id_str = str(doc_version_id)
-            anchor_id = f"{doc_version_id_str}:{current_section_path}:{content_type.value}:{ordinal}:{text_hash}"
+            anchor_id = f"{doc_version_id_str}:{content_type.value}:{context_hash}"
             
             # Формируем location_json
             location_json = {
@@ -334,6 +407,28 @@ class DocxIngestor:
                 "style": style_name,
                 "section_path": current_section_path,
             }
+            
+            # Классифицируем source_zone для текущего section_path
+            # Передаём section_path как список заголовков и текущий заголовок для лучшей классификации
+            heading_text = None
+            if heading_stack:
+                heading_text = heading_stack[-1][1]  # Текст последнего заголовка
+            
+            # Определяем язык документа для классификатора
+            doc_language = None
+            if document_language in (DocumentLanguage.RU, DocumentLanguage.EN):
+                doc_language = document_language.value
+            
+            zone_result = self.zone_classifier.classify(
+                doc_type=doc_type,
+                section_path=current_section_path,
+                heading_text=heading_text,
+                language=doc_language
+            )
+            source_zone = zone_result.zone
+            
+            # Определяем язык для anchor (локальная детекция из текста)
+            anchor_language = detect_text_language(text_norm)
             
             # Создаём anchor
             anchor = AnchorCreate(
@@ -346,62 +441,123 @@ class DocxIngestor:
                 text_norm=text_norm,
                 text_hash=text_hash,
                 location_json=location_json,
+                source_zone=source_zone,
+                language=anchor_language,
             )
             
             anchors.append(anchor)
 
-        # Пытаемся извлечь footnotes, если python-docx предоставляет доступ.
-        # Важно: если доступа нет (часто так и бывает), просто пишем warning и продолжаем.
+        # Извлекаем footnotes из документа
+        # В python-docx footnotes доступны через doc.part.footnotes_part.footnotes
+        fn_section_path = "FOOTNOTES"
+        footnotes_count = 0
+        footnotes_anchors_count = 0
+        
         try:
-            footnotes = getattr(getattr(doc, "part", None), "footnotes", None)
-            footnotes_part = getattr(footnotes, "part", None) if footnotes is not None else None
-            footnotes_list = getattr(footnotes_part, "footnotes", None) if footnotes_part is not None else None
-
-            if footnotes_list:
-                fn_section_path = "FOOTNOTES"
-                fn_para_index = 0
-                for fn_idx, fn in enumerate(footnotes_list):
-                    # Пробуем получить параграфы с текстом из footnote
-                    fn_paragraphs = getattr(fn, "paragraphs", None)
-                    if not fn_paragraphs:
-                        continue
-                    for p in fn_paragraphs:
-                        fn_para_index += 1
-                        text_raw = getattr(p, "text", "") or ""
-                        text_norm = normalize_text(text_raw)
-                        if not text_norm:
+            # Получаем footnotes_part из документа
+            footnotes_part = doc.part.footnotes_part if hasattr(doc.part, 'footnotes_part') else None
+            
+            if footnotes_part is not None:
+                # Получаем коллекцию footnotes
+                footnotes = footnotes_part.footnotes if hasattr(footnotes_part, 'footnotes') else None
+                
+                if footnotes is not None:
+                    # Проходим по всем footnotes
+                    for fn_idx, footnote in enumerate(footnotes):
+                        footnotes_count += 1
+                        
+                        # Получаем параграфы внутри footnote
+                        # В python-docx footnote имеет атрибут paragraphs
+                        fn_paragraphs = footnote.paragraphs if hasattr(footnote, 'paragraphs') else []
+                        
+                        if not fn_paragraphs:
                             continue
-
-                        key = (fn_section_path, AnchorContentType.FN)
-                        ordinal = ordinal_counters.get(key, 0) + 1
-                        ordinal_counters[key] = ordinal
-                        text_hash = get_text_hash(text_norm)
-                        anchor_id = f"{str(doc_version_id)}:{fn_section_path}:{AnchorContentType.FN.value}:{ordinal}:{text_hash}"
-
-                        location_json = {
-                            "para_index": None,
-                            "fn_index": fn_idx,
-                            "fn_para_index": fn_para_index,
-                            "section_path": fn_section_path,
-                        }
-
-                        anchors.append(
-                            AnchorCreate(
-                                doc_version_id=doc_version_id,
-                                anchor_id=anchor_id,
+                        
+                        # Обрабатываем каждый параграф внутри footnote
+                        for fn_para_idx, fn_paragraph in enumerate(fn_paragraphs, start=1):
+                            # Получаем текст параграфа
+                            text_raw = fn_paragraph.text if hasattr(fn_paragraph, 'text') else ""
+                            
+                            if not text_raw:
+                                continue
+                            
+                            # Нормализуем текст
+                            text_norm = normalize_text(text_raw)
+                            if not text_norm:
+                                continue
+                            
+                            # Получаем ordinal для поля ordinal (не используется в anchor_id)
+                            key = (fn_section_path, AnchorContentType.FN)
+                            ordinal = ordinal_counters.get(key, 0) + 1
+                            ordinal_counters[key] = ordinal
+                            
+                            # Вычисляем hash текста для стабильного anchor_id сносок
+                            # Для сносок используем только text_norm (без section_path)
+                            text_hash = get_text_hash(text_norm)
+                            # Берем первые 16 символов хеша
+                            fn_hash_short = text_hash[:16]
+                            
+                            # Формируем anchor_id для footnotes: {doc_version_id}:fn:{get_text_hash(text_norm)[:16]}
+                            # ID инвариантен к перемещению внутри документа, если текст не изменился
+                            doc_version_id_str = str(doc_version_id)
+                            anchor_id = f"{doc_version_id_str}:fn:{fn_hash_short}"
+                            
+                            # Формируем location_json
+                            location_json = {
+                                "para_index": None,  # Для footnotes para_index не используется
+                                "fn_index": fn_idx,  # Индекс сноски в документе
+                                "fn_para_index": fn_para_idx,  # Индекс параграфа внутри сноски
+                                "section_path": fn_section_path,
+                            }
+                            
+                            # Классифицируем source_zone для footnotes (обычно unknown)
+                            doc_language = None
+                            if document_language in (DocumentLanguage.RU, DocumentLanguage.EN):
+                                doc_language = document_language.value
+                            
+                            zone_result = self.zone_classifier.classify(
+                                doc_type=doc_type,
                                 section_path=fn_section_path,
-                                content_type=AnchorContentType.FN,
-                                ordinal=ordinal,
-                                text_raw=text_raw,
-                                text_norm=text_norm,
-                                text_hash=text_hash,
-                                location_json=location_json,
+                                heading_text=None,
+                                language=doc_language
                             )
-                        )
+                            
+                            # Определяем язык для footnote anchor (локальная детекция из текста)
+                            fn_anchor_language = detect_text_language(text_norm)
+                            
+                            # Создаём anchor для footnote
+                            anchors.append(
+                                AnchorCreate(
+                                    doc_version_id=doc_version_id,
+                                    anchor_id=anchor_id,
+                                    section_path=fn_section_path,
+                                    content_type=AnchorContentType.FN,
+                                    ordinal=ordinal,
+                                    text_raw=text_raw,
+                                    text_norm=text_norm,
+                                    text_hash=text_hash,
+                                    location_json=location_json,
+                                    source_zone=zone_result.zone,
+                                    language=fn_anchor_language,
+                                )
+                            )
+                            footnotes_anchors_count += 1
+                    
+                else:
+                    # footnotes_part есть, но footnotes недоступны
+                    # Это нормально, если в документе нет footnotes
+                    pass
             else:
-                warnings.append("Footnotes недоступны через текущий DOCX парсер; якоря fn не созданы")
-        except Exception:
-            warnings.append("Footnotes недоступны через текущий DOCX парсер; якоря fn не созданы")
+                # footnotes_part отсутствует - в документе нет footnotes
+                # Это нормально, не все документы содержат footnotes
+                pass
+                
+        except AttributeError as e:
+            # Если API python-docx не поддерживает footnotes или структура отличается
+            warnings.append(f"Footnotes недоступны через python-docx API: {str(e)}")
+        except Exception as e:
+            # Другие ошибки при извлечении footnotes
+            warnings.append(f"Ошибка при извлечении footnotes: {str(e)}")
         
         # Определяем качество заголовков
         heading_quality = "none"
@@ -441,6 +597,9 @@ class DocxIngestor:
             # Новые метрики фильтрации
             "false_heading_filtered_count": false_heading_filtered_count,
             "frontmatter_paragraphs_count": frontmatter_paragraphs_count,
+            # Информация о footnotes
+            "footnotes_count": footnotes_count,
+            "footnotes_anchors_count": footnotes_anchors_count,
             "warnings": warnings,
         }
         

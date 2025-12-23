@@ -27,6 +27,13 @@ from app.schemas.sections import (
 )
 from app.schemas.studies import StudyCreate, StudyOut
 from app.schemas.tasks import TaskOut
+from app.schemas.topics import (
+    ClusterAssignmentOut,
+    HeadingClusterOut,
+    TopicListItem,
+    TopicMappingRunOut,
+    TopicOut,
+)
 
 __all__ = [
     "BaseResponse",
@@ -54,5 +61,10 @@ __all__ = [
     "ConflictOut",
     "ImpactItemOut",
     "TaskOut",
+    "TopicOut",
+    "TopicListItem",
+    "HeadingClusterOut",
+    "TopicMappingRunOut",
+    "ClusterAssignmentOut",
 ]
 

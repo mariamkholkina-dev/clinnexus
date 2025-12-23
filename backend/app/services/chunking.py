@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 from uuid import UUID
 
@@ -68,6 +68,10 @@ def _hash_embedding_v1(text_norm: str, dims: int = 1536) -> list[float]:
     return [x * inv for x in vec]
 
 
+# Версия ChunkingService (увеличивается при изменении логики chunking)
+VERSION = "1.0.0"
+
+
 class ChunkingService:
     """Сервис rebuild chunk-ов для doc_version."""
 
@@ -88,13 +92,14 @@ class ChunkingService:
             deleted = 0
         logger.debug(f"Chunking: удалено старых chunks={deleted} для doc_version_id={doc_version_id}")
 
-        # 2) Загружаем anchors нужных типов (исключая cell)
+        # 2) Загружаем anchors нужных типов (включая cell для табличных чанков)
         allowed_types = {
             AnchorContentType.HDR,
             AnchorContentType.P,
             AnchorContentType.LI,
             AnchorContentType.FN,
             AnchorContentType.TBL,
+            AnchorContentType.CELL,
         }
 
         anchors_stmt = (
@@ -138,6 +143,9 @@ class ChunkingService:
                 return (para_index if para_index is not None else 10**9, a.ordinal, a.anchor_id)
 
             sec_anchors_sorted = sorted(sec_anchors, key=sort_key)
+            # Создаем словарь anchor_id -> anchor для быстрого поиска source_zone
+            anchor_map = {a.anchor_id: a for a in sec_anchors_sorted}
+            
             if logger.isEnabledFor(10):  # DEBUG
                 sample = sec_anchors_sorted[:10]
                 logger.debug(
@@ -175,6 +183,41 @@ class ChunkingService:
                 token_estimate = max(1, int(len(text_norm) / 4)) if text_norm else 0
                 embedding = _hash_embedding_v1(text_norm, dims=1536)
 
+                # Определяем source_zone: most_common zone среди anchor_ids в chunk
+                chunk_source_zones = [
+                    anchor_map[anchor_id].source_zone
+                    for anchor_id in cur_anchor_ids
+                    if anchor_id in anchor_map
+                ]
+                if chunk_source_zones:
+                    # Находим наиболее часто встречающуюся zone
+                    from app.db.enums import SourceZone
+                    zone_counter = Counter(chunk_source_zones)
+                    most_common_zone, _ = zone_counter.most_common(1)[0]
+                    # Убеждаемся, что это SourceZone enum
+                    if isinstance(most_common_zone, SourceZone):
+                        source_zone = most_common_zone
+                    else:
+                        source_zone = SourceZone(most_common_zone) if most_common_zone in [z.value for z in SourceZone] else SourceZone.UNKNOWN
+                else:
+                    from app.db.enums import SourceZone
+                    source_zone = SourceZone.UNKNOWN
+                
+                # Определяем language: most_common language среди anchor_ids в chunk
+                from app.db.enums import DocumentLanguage
+                chunk_languages = [
+                    anchor_map[anchor_id].language
+                    for anchor_id in cur_anchor_ids
+                    if anchor_id in anchor_map
+                ]
+                if chunk_languages:
+                    # Находим наиболее часто встречающийся язык
+                    lang_counter = Counter(chunk_languages)
+                    most_common_lang, _ = lang_counter.most_common(1)[0]
+                    chunk_language = most_common_lang
+                else:
+                    chunk_language = DocumentLanguage.UNKNOWN
+
                 metadata: dict[str, Any] = {
                     "token_estimate": token_estimate,
                     "anchor_count": len(cur_anchor_ids),
@@ -185,7 +228,7 @@ class ChunkingService:
                     "Chunking: flush_chunk "
                     f"(section_path={section_path!r}, chunk_ordinal={chunk_ordinal}, "
                     f"token_estimate={token_estimate}, anchors={len(cur_anchor_ids)}, "
-                    f"text_chars={len(text)}, chunk_id={chunk_id})"
+                    f"text_chars={len(text)}, chunk_id={chunk_id}, source_zone={source_zone}, language={chunk_language.value})"
                 )
 
                 chunk_objects.append(
@@ -197,6 +240,8 @@ class ChunkingService:
                         anchor_ids=cur_anchor_ids,
                         embedding=embedding,
                         metadata_json=metadata,
+                        source_zone=source_zone,
+                        language=chunk_language,
                     )
                 )
 
@@ -205,7 +250,12 @@ class ChunkingService:
                 cur_chars = 0
 
             for a in sec_anchors_sorted:
-                piece = (a.text_norm or "").strip()
+                # Для якорей типа CELL формируем специальный текст с метаданными таблицы
+                if a.content_type == AnchorContentType.CELL:
+                    piece = self._format_cell_chunk_text(a)
+                else:
+                    piece = (a.text_norm or "").strip()
+                
                 if not piece:
                     logger.debug(
                         "Chunking: пропуск пустого anchor.text_norm "
@@ -254,5 +304,43 @@ class ChunkingService:
             f"(doc_version_id={doc_version_id}, chunks_created={len(chunk_objects)})"
         )
         return len(chunk_objects)
+
+    def _format_cell_chunk_text(self, anchor: Anchor) -> str:
+        """
+        Формирует текст чанка для якоря типа CELL с метаданными таблицы.
+        
+        Формат: "Table: [section_path]. Row: [row_idx], Column: [col_idx]. Value: [text_norm]"
+        
+        Args:
+            anchor: Якорь типа CELL
+            
+        Returns:
+            Отформатированный текст для чанка
+        """
+        text_norm = (anchor.text_norm or "").strip()
+        if not text_norm:
+            return ""
+        
+        location_json = anchor.location_json if isinstance(anchor.location_json, dict) else {}
+        
+        # Проверяем наличие метаданных таблицы
+        table_id = location_json.get("table_id")
+        row_idx = location_json.get("row_idx")
+        col_idx = location_json.get("col_idx")
+        
+        if table_id is not None or row_idx is not None or col_idx is not None:
+            # Формируем текст с метаданными таблицы
+            parts = [f"Table: {anchor.section_path}"]
+            
+            if row_idx is not None:
+                parts.append(f"Row: {row_idx}")
+            if col_idx is not None:
+                parts.append(f"Column: {col_idx}")
+            
+            parts.append(f"Value: {text_norm}")
+            return ". ".join(parts) + "."
+        else:
+            # Если метаданных нет, используем обычный формат
+            return text_norm
 
 

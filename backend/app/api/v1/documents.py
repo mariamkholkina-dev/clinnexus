@@ -16,8 +16,10 @@ from app.core.logging import logger
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.storage import save_upload
 from app.worker.job_runner import run_ingestion_now
+from app.services.anchor_aligner import AnchorAligner
 from app.db.models.studies import Document, DocumentVersion, Study
 from app.db.models.anchors import Anchor
+from app.db.models.anchor_matches import AnchorMatch
 from app.db.enums import AnchorContentType, IngestionStatus, DocumentLanguage
 from app.schemas.common import SoAResult
 from app.schemas.documents import (
@@ -26,6 +28,8 @@ from app.schemas.documents import (
     DocumentVersionCreate,
     DocumentVersionOut,
     UploadResult,
+    DiffResult,
+    ChangedAnchor,
 )
 from app.schemas.anchors import AnchorOut
 from app.db.models.facts import Fact
@@ -39,6 +43,123 @@ _CYR_RE = re.compile(r"[А-Яа-яЁё]")
 _LAT_RE = re.compile(r"[A-Za-z]")
 
 
+def _detect_text_language(text: str) -> DocumentLanguage:
+    """
+    Быстрая локальная детекция языка из текста (regex на кириллицу/латиницу).
+    Используется для определения языка конкретного anchor/chunk.
+    """
+    if not text:
+        return DocumentLanguage.UNKNOWN
+    
+    cyr_count = len(_CYR_RE.findall(text))
+    lat_count = len(_LAT_RE.findall(text))
+    total_letters = cyr_count + lat_count
+    
+    if total_letters == 0:
+        return DocumentLanguage.UNKNOWN
+    
+    cyr_ratio = cyr_count / total_letters
+    
+    if cyr_ratio >= 0.7:
+        return DocumentLanguage.RU
+    elif cyr_ratio <= 0.3:
+        return DocumentLanguage.EN
+    else:
+        # Смешанный, если достаточно обеих букв
+        return DocumentLanguage.MIXED if cyr_count >= 10 and lat_count >= 10 else DocumentLanguage.UNKNOWN
+
+
+def _detect_bilingual_two_column_tables(doc) -> tuple[bool, dict[str, Any]]:
+    """
+    Детектирует bilingual two-column таблицы в DOCX:
+    - если значимая доля текста приходит из таблиц 2-колоночного вида (в одной ячейке RU, в другой EN)
+    - или если в таблицах много пар строк ru/en по соседству
+    
+    Returns:
+        (is_bilingual, metadata) - является ли документ bilingual two-column
+    """
+    tables = getattr(doc, "tables", []) or []
+    if not tables:
+        return False, {"tables_count": 0}
+    
+    two_column_tables = 0
+    bilingual_cells_count = 0
+    total_table_chars = 0
+    bilingual_pairs_count = 0
+    
+    for tbl in tables:
+        rows = getattr(tbl, "rows", []) or []
+        if not rows:
+            continue
+        
+        # Проверяем, является ли таблица 2-колоночной (≈2 колонки)
+        if len(rows) > 0:
+            col_count = len(rows[0].cells) if len(rows[0].cells) > 0 else 0
+            if col_count == 2:
+                two_column_tables += 1
+                table_chars = 0
+                row_bilingual_pairs = 0
+                
+                # Проверяем каждую строку на bilingual пары
+                for row in rows:
+                    cells = getattr(row, "cells", []) or []
+                    if len(cells) >= 2:
+                        cell1_text = (getattr(cells[0], "text", "") or "").strip()
+                        cell2_text = (getattr(cells[1], "text", "") or "").strip()
+                        
+                        if cell1_text and cell2_text:
+                            table_chars += len(cell1_text) + len(cell2_text)
+                            
+                            # Проверяем, является ли пара bilingual (один RU, другой EN)
+                            lang1 = _detect_text_language(cell1_text)
+                            lang2 = _detect_text_language(cell2_text)
+                            
+                            if (lang1 == DocumentLanguage.RU and lang2 == DocumentLanguage.EN) or \
+                               (lang1 == DocumentLanguage.EN and lang2 == DocumentLanguage.RU):
+                                bilingual_cells_count += 2
+                                row_bilingual_pairs += 1
+                
+                total_table_chars += table_chars
+                if row_bilingual_pairs > 0:
+                    bilingual_pairs_count += row_bilingual_pairs
+                
+                # Также проверяем соседние строки (ru/en по соседству)
+                for i in range(len(rows) - 1):
+                    row1_cells = getattr(rows[i], "cells", []) or []
+                    row2_cells = getattr(rows[i + 1], "cells", []) or []
+                    
+                    if row1_cells and row2_cells:
+                        row1_text = (getattr(row1_cells[0], "text", "") or "").strip()
+                        row2_text = (getattr(row2_cells[0], "text", "") or "").strip()
+                        
+                        if row1_text and row2_text:
+                            lang1 = _detect_text_language(row1_text)
+                            lang2 = _detect_text_language(row2_text)
+                            
+                            if (lang1 == DocumentLanguage.RU and lang2 == DocumentLanguage.EN) or \
+                               (lang1 == DocumentLanguage.EN and lang2 == DocumentLanguage.RU):
+                                bilingual_pairs_count += 1
+    
+    # Определяем, является ли документ bilingual two-column
+    # Порог: если >=30% текста из таблиц приходится на bilingual пары, или много пар строк
+    is_bilingual = False
+    if two_column_tables > 0 and total_table_chars > 0:
+        bilingual_ratio = bilingual_cells_count * 50 / total_table_chars if total_table_chars > 0 else 0
+        # Значимая доля = >=30% текста в таблицах bilingual, или >=5 пар
+        if bilingual_ratio >= 0.3 or bilingual_pairs_count >= 5:
+            is_bilingual = True
+    
+    meta = {
+        "tables_count": len(tables),
+        "two_column_tables": two_column_tables,
+        "bilingual_cells_count": bilingual_cells_count,
+        "bilingual_pairs_count": bilingual_pairs_count,
+        "total_table_chars": total_table_chars,
+        "bilingual_ratio": round(bilingual_cells_count * 50 / total_table_chars, 4) if total_table_chars > 0 else 0,
+    }
+    return is_bilingual, meta
+
+
 def _uri_to_path(uri: str) -> Path:
     if uri.startswith("file://"):
         parsed = urllib.parse.urlparse(uri)
@@ -50,11 +171,129 @@ def _uri_to_path(uri: str) -> Path:
     return Path(uri)
 
 
+def _detect_text_language(text: str) -> DocumentLanguage:
+    """
+    Быстрая локальная детекция языка из текста (regex на кириллицу/латиницу).
+    Используется для определения языка конкретного anchor/chunk.
+    """
+    if not text:
+        return DocumentLanguage.UNKNOWN
+    
+    cyr_count = len(_CYR_RE.findall(text))
+    lat_count = len(_LAT_RE.findall(text))
+    total_letters = cyr_count + lat_count
+    
+    if total_letters == 0:
+        return DocumentLanguage.UNKNOWN
+    
+    cyr_ratio = cyr_count / total_letters
+    
+    if cyr_ratio >= 0.7:
+        return DocumentLanguage.RU
+    elif cyr_ratio <= 0.3:
+        return DocumentLanguage.EN
+    else:
+        # Смешанный, если достаточно обеих букв
+        return DocumentLanguage.MIXED if cyr_count >= 10 and lat_count >= 10 else DocumentLanguage.UNKNOWN
+
+
+def _detect_bilingual_two_column_tables(doc) -> tuple[bool, dict[str, Any]]:
+    """
+    Детектирует bilingual two-column таблицы в DOCX:
+    - если значимая доля текста приходит из таблиц 2-колоночного вида (в одной ячейке RU, в другой EN)
+    - или если в таблицах много пар строк ru/en по соседству
+    
+    Returns:
+        (is_bilingual, metadata) - является ли документ bilingual two-column
+    """
+    tables = getattr(doc, "tables", []) or []
+    if not tables:
+        return False, {"tables_count": 0}
+    
+    two_column_tables = 0
+    bilingual_cells_count = 0
+    total_table_chars = 0
+    bilingual_pairs_count = 0
+    
+    for tbl in tables:
+        rows = getattr(tbl, "rows", []) or []
+        if not rows:
+            continue
+        
+        # Проверяем, является ли таблица 2-колоночной (≈2 колонки)
+        if len(rows) > 0:
+            col_count = len(rows[0].cells) if len(rows[0].cells) > 0 else 0
+            if col_count == 2:
+                two_column_tables += 1
+                table_chars = 0
+                row_bilingual_pairs = 0
+                
+                # Проверяем каждую строку на bilingual пары
+                for row in rows:
+                    cells = getattr(row, "cells", []) or []
+                    if len(cells) >= 2:
+                        cell1_text = (getattr(cells[0], "text", "") or "").strip()
+                        cell2_text = (getattr(cells[1], "text", "") or "").strip()
+                        
+                        if cell1_text and cell2_text:
+                            table_chars += len(cell1_text) + len(cell2_text)
+                            
+                            # Проверяем, является ли пара bilingual (один RU, другой EN)
+                            lang1 = _detect_text_language(cell1_text)
+                            lang2 = _detect_text_language(cell2_text)
+                            
+                            if (lang1 == DocumentLanguage.RU and lang2 == DocumentLanguage.EN) or \
+                               (lang1 == DocumentLanguage.EN and lang2 == DocumentLanguage.RU):
+                                bilingual_cells_count += 2
+                                row_bilingual_pairs += 1
+                
+                total_table_chars += table_chars
+                if row_bilingual_pairs > 0:
+                    bilingual_pairs_count += row_bilingual_pairs
+                
+                # Также проверяем соседние строки (ru/en по соседству)
+                for i in range(len(rows) - 1):
+                    row1_cells = getattr(rows[i], "cells", []) or []
+                    row2_cells = getattr(rows[i + 1], "cells", []) or []
+                    
+                    if row1_cells and row2_cells:
+                        row1_text = (getattr(row1_cells[0], "text", "") or "").strip()
+                        row2_text = (getattr(row2_cells[0], "text", "") or "").strip()
+                        
+                        if row1_text and row2_text:
+                            lang1 = _detect_text_language(row1_text)
+                            lang2 = _detect_text_language(row2_text)
+                            
+                            if (lang1 == DocumentLanguage.RU and lang2 == DocumentLanguage.EN) or \
+                               (lang1 == DocumentLanguage.EN and lang2 == DocumentLanguage.RU):
+                                bilingual_pairs_count += 1
+    
+    # Определяем, является ли документ bilingual two-column
+    # Порог: если >=30% текста из таблиц приходится на bilingual пары, или много пар строк
+    is_bilingual = False
+    if two_column_tables > 0 and total_table_chars > 0:
+        bilingual_ratio = bilingual_cells_count * 50 / total_table_chars if total_table_chars > 0 else 0
+        # Значимая доля = >=30% текста в таблицах bilingual, или >=5 пар
+        if bilingual_ratio >= 0.3 or bilingual_pairs_count >= 5:
+            is_bilingual = True
+    
+    meta = {
+        "tables_count": len(tables),
+        "two_column_tables": two_column_tables,
+        "bilingual_cells_count": bilingual_cells_count,
+        "bilingual_pairs_count": bilingual_pairs_count,
+        "total_table_chars": total_table_chars,
+        "bilingual_ratio": round(bilingual_cells_count * 50 / total_table_chars, 4) if total_table_chars > 0 else 0,
+    }
+    return is_bilingual, meta
+
+
 def _detect_language_from_docx(file_path: Path, max_chars: int = 50_000) -> tuple[DocumentLanguage, dict[str, Any]]:
     """
-    Очень простой детект языка:
+    Детект языка документа:
     - считаем количество кириллических и латинских букв
     - ru/en/mixed на основе долей
+    - дополнительно проверяем bilingual two-column таблицы для mixed
     """
     try:
         from docx import Document as DocxDocument  # локальный импорт, чтобы не тянуть зависимость везде
@@ -65,6 +304,21 @@ def _detect_language_from_docx(file_path: Path, max_chars: int = 50_000) -> tupl
         doc = DocxDocument(str(file_path))
     except Exception as e:  # noqa: BLE001
         return DocumentLanguage.UNKNOWN, {"error": f"docx open failed: {e}"}
+
+    # Проверяем bilingual two-column таблицы
+    is_bilingual, bilingual_meta = _detect_bilingual_two_column_tables(doc)
+    if is_bilingual:
+        meta = {
+            "cyr": 0,
+            "lat": 0,
+            "letters": 0,
+            "cyr_ratio": 0.0,
+            "lat_ratio": 0.0,
+            "max_chars": max_chars,
+            "bilingual_two_column": True,
+            **bilingual_meta,
+        }
+        return DocumentLanguage.MIXED, meta
 
     buf: list[str] = []
     total = 0
@@ -101,7 +355,15 @@ def _detect_language_from_docx(file_path: Path, max_chars: int = 50_000) -> tupl
     lat = len(_LAT_RE.findall(text))
     letters = cyr + lat
     if letters == 0:
-        return DocumentLanguage.UNKNOWN, {"cyr": cyr, "lat": lat, "letters": letters, "max_chars": max_chars}
+        meta = {
+            "cyr": cyr,
+            "lat": lat,
+            "letters": letters,
+            "max_chars": max_chars,
+            "bilingual_two_column": False,
+            **bilingual_meta,
+        }
+        return DocumentLanguage.UNKNOWN, meta
 
     cyr_ratio = cyr / letters
     lat_ratio = lat / letters
@@ -123,6 +385,8 @@ def _detect_language_from_docx(file_path: Path, max_chars: int = 50_000) -> tupl
         "cyr_ratio": round(cyr_ratio, 4),
         "lat_ratio": round(lat_ratio, 4),
         "max_chars": max_chars,
+        "bilingual_two_column": False,
+        **bilingual_meta,
     }
     return lang, meta
 
@@ -162,25 +426,46 @@ async def _build_ingestion_summary(
     chunks_created = int(getattr(ingestion_result, "chunks_created", 0) or 0) if ingestion_result else 0
     soa_found = bool(getattr(ingestion_result, "soa_detected", False)) if ingestion_result else False
 
-    # SoA facts actually written: проверяем по БД (регрессионно устойчиво к изменениям сервиса)
+    # SoA facts actually written: проверяем по БД и извлекаем количество элементов из value_json
     soa_facts_counts: dict[str, int] = {"visits": 0, "procedures": 0, "matrix": 0}
+    soa_facts_written_flags: dict[str, bool] = {"visits": False, "procedures": False, "matrix": False}
+    
     if ingestion_result is not None:
+        # Получаем факты SoA с их value_json
         facts_res = await db.execute(
-            select(Fact.fact_key, func.count(Fact.id).label("cnt"))
+            select(Fact.fact_key, Fact.value_json)
             .where(
                 Fact.created_from_doc_version_id == version.id,
                 Fact.fact_type == "soa",
                 Fact.fact_key.in_(("visits", "procedures", "matrix")),
             )
-            .group_by(Fact.fact_key)
         )
+        
         for row in facts_res.all():
-            soa_facts_counts[str(row.fact_key)] = int(row.cnt)
+            fact_key = str(row.fact_key)
+            value_json = row.value_json or {}
+            
+            # Извлекаем количество элементов из value_json
+            if fact_key == "visits":
+                visits_list = value_json.get("visits", [])
+                if isinstance(visits_list, list):
+                    soa_facts_counts["visits"] = len(visits_list)
+                    soa_facts_written_flags["visits"] = len(visits_list) > 0
+            elif fact_key == "procedures":
+                procedures_list = value_json.get("procedures", [])
+                if isinstance(procedures_list, list):
+                    soa_facts_counts["procedures"] = len(procedures_list)
+                    soa_facts_written_flags["procedures"] = len(procedures_list) > 0
+            elif fact_key == "matrix":
+                matrix_list = value_json.get("matrix", [])
+                if isinstance(matrix_list, list):
+                    soa_facts_counts["matrix"] = len(matrix_list)
+                    soa_facts_written_flags["matrix"] = len(matrix_list) > 0
 
     soa_facts_written = {
-        "visits": soa_facts_counts["visits"] > 0,
-        "procedures": soa_facts_counts["procedures"] > 0,
-        "matrix": soa_facts_counts["matrix"] > 0,
+        "visits": soa_facts_written_flags["visits"],
+        "procedures": soa_facts_written_flags["procedures"],
+        "matrix": soa_facts_written_flags["matrix"],
         "counts": soa_facts_counts,
     }
 
@@ -821,4 +1106,105 @@ async def get_soa(
         notes=[],  # TODO: извлечь notes если есть
         confidence=confidence,
         warnings=soa_warnings,
+    )
+
+
+@router.post(
+    "/documents/{doc_id}/versions/{from_version_id}/diff/{to_version_id}",
+    response_model=DiffResult,
+    status_code=status.HTTP_200_OK,
+)
+async def diff_versions(
+    doc_id: UUID,
+    from_version_id: UUID,
+    to_version_id: UUID,
+    min_score: float = Query(0.78, ge=0.0, le=1.0),
+    db: AsyncSession = Depends(get_db),
+) -> DiffResult:
+    """
+    Сравнивает две версии документа и возвращает различия между якорями.
+    
+    Выполняет выравнивание якорей между версиями и возвращает:
+    - matched: количество совпавших якорей
+    - changed: список измененных якорей с score
+    - added: список добавленных anchor_ids
+    - removed: список удаленных anchor_ids
+    """
+    # Проверяем существование документа
+    document = await db.get(Document, doc_id)
+    if not document:
+        raise NotFoundError("Document", str(doc_id))
+    
+    # Проверяем существование версий
+    from_version = await db.get(DocumentVersion, from_version_id)
+    if not from_version:
+        raise NotFoundError("DocumentVersion", str(from_version_id))
+    
+    to_version = await db.get(DocumentVersion, to_version_id)
+    if not to_version:
+        raise NotFoundError("DocumentVersion", str(to_version_id))
+    
+    # Проверяем, что версии принадлежат одному документу
+    if from_version.document_id != doc_id or to_version.document_id != doc_id:
+        raise ValidationError("Версии должны принадлежать одному документу")
+    
+    # Выполняем выравнивание
+    aligner = AnchorAligner(db)
+    stats = await aligner.align(
+        from_version_id,
+        to_version_id,
+        scope="body",
+        min_score=min_score,
+    )
+    
+    # Получаем детали матчей
+    stmt = select(AnchorMatch).where(
+        AnchorMatch.from_doc_version_id == from_version_id,
+        AnchorMatch.to_doc_version_id == to_version_id,
+    )
+    result = await db.execute(stmt)
+    matches = result.scalars().all()
+    
+    # Формируем список измененных якорей
+    changed: list[ChangedAnchor] = []
+    matched_anchor_ids_b: set[str] = set()
+    
+    for match in matches:
+        matched_anchor_ids_b.add(match.to_anchor_id)
+        if match.score < 1.0:
+            # Генерируем краткое описание изменений
+            diff_summary = None
+            if match.meta_json:
+                text_sim = match.meta_json.get("text_sim")
+                if text_sim is not None and text_sim < 1.0:
+                    diff_summary = f"Текст изменен (similarity: {text_sim:.2f})"
+            
+            changed.append(
+                ChangedAnchor(
+                    from_anchor_id=match.from_anchor_id,
+                    to_anchor_id=match.to_anchor_id,
+                    score=match.score,
+                    diff_summary=diff_summary,
+                )
+            )
+    
+    # Получаем все якоря для определения added/removed
+    stmt_a = select(Anchor.anchor_id).where(Anchor.doc_version_id == from_version_id)
+    result_a = await db.execute(stmt_a)
+    all_anchor_ids_a = {row[0] for row in result_a}
+    
+    stmt_b = select(Anchor.anchor_id).where(Anchor.doc_version_id == to_version_id)
+    result_b = await db.execute(stmt_b)
+    all_anchor_ids_b = {row[0] for row in result_b}
+    
+    # Определяем added и removed
+    matched_anchor_ids_a = {match.from_anchor_id for match in matches}
+    added = list(all_anchor_ids_b - matched_anchor_ids_b)
+    removed = list(all_anchor_ids_a - matched_anchor_ids_a)
+    
+    return DiffResult(
+        matched=stats.matched,
+        changed=changed,
+        added=added,
+        removed=removed,
     )

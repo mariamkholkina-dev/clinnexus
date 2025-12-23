@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.core.config import settings
-from app.db.models.sections import SectionContract
+from app.db.models.sections import TargetSectionContract
 from app.db.enums import DocumentType
 
 
@@ -200,9 +200,9 @@ async def update_contracts_multilang() -> None:
 
     async with async_session_factory() as session:
         # Находим активные контракты для протоколов
-        stmt = select(SectionContract).where(
-            SectionContract.doc_type == DocumentType.PROTOCOL,
-            SectionContract.is_active == True,
+        stmt = select(TargetSectionContract).where(
+            TargetSectionContract.doc_type == DocumentType.PROTOCOL,
+            TargetSectionContract.is_active == True,
         )
         result = await session.execute(stmt)
         contracts = result.scalars().all()

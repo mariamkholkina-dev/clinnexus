@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,8 @@ from app.api.deps import get_db
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.enums import DocumentType
+from app.db.models.topics import ClusterAssignment
+from app.db.models.studies import DocumentVersion
 from app.schemas.passport_tuning import (
     Cluster,
     ClustersResponse,
@@ -20,7 +22,9 @@ from app.schemas.passport_tuning import (
     MappingMode,
     MappingResponse,
 )
-from app.services.taxonomy_service import TaxonomyService
+from app.services.topic_evidence_builder import TopicEvidenceBuilder
+from sqlalchemy import select
+from uuid import UUID
 
 router = APIRouter(tags=["passport-tuning"])
 
@@ -176,23 +180,16 @@ async def get_sections(
     doc_type: DocumentType = Query(..., description="Тип документа"),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Возвращает дерево taxonomy для указанного doc_type.
+    """Возвращает структуру секций для указанного doc_type.
     
-    Включает:
-    - nodes: иерархия секций (parent->child)
-    - aliases: алиасы (alias -> canonical)
-    - related: связанные секции (граф конфликтов)
+    ПРИМЕЧАНИЕ: Таблицы taxonomy удалены. Структура документов определяется через templates.
+    Возвращает пустой объект для обратной совместимости.
     """
-    taxonomy_service = TaxonomyService(db)
-    try:
-        tree = await taxonomy_service.get_tree(doc_type)
-        return tree
-    except Exception as e:
-        logger.error(f"Ошибка при получении taxonomy для {doc_type.value}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при получении taxonomy: {e}",
-        )
+    return {
+        "nodes": [],
+        "aliases": [],
+        "related": [],
+    }
 
 
 @router.post("/mapping", status_code=status.HTTP_200_OK)
@@ -203,7 +200,7 @@ async def save_mapping(
     """Сохраняет полный mapping на диск.
 
     Валидирует все элементы и сохраняет атомарно (tmp -> rename).
-    Применяет нормализацию section_key через taxonomy (alias resolution).
+    ПРИМЕЧАНИЕ: Нормализация через taxonomy удалена. section_key используется как есть.
     """
     mapping_file = get_mapping_file_path()
 
@@ -214,8 +211,6 @@ async def save_mapping(
     validated_mapping: dict[str, ClusterMappingItem] = {}
     validation_errors: list[dict[str, str]] = []
 
-    taxonomy_service = TaxonomyService(db)
-
     for cluster_id, item_data in mapping_data.items():
         try:
             # Добавляем дефолты для mapping_mode, если не указан
@@ -224,20 +219,7 @@ async def save_mapping(
 
             item = ClusterMappingItem.model_validate(item_data)
             
-            # Нормализуем section_key через taxonomy (resolve alias)
-            if item.section_key and item.doc_type:
-                original_key = item.section_key
-                canonical_key = await taxonomy_service.normalize_section_key(
-                    item.doc_type, original_key
-                )
-                if canonical_key != original_key:
-                    # Обновляем на canonical, сохраняем original в notes если нужно
-                    item.section_key = canonical_key
-                    if item.notes:
-                        item.notes = f"[alias: {original_key}] {item.notes}"
-                    else:
-                        item.notes = f"[alias: {original_key}]"
-            
+            # section_key используется как есть (нормализация через taxonomy удалена)
             validated_mapping[str(cluster_id)] = item
 
         except Exception as e:
@@ -418,26 +400,110 @@ async def get_mapping_for_autotune(
         )
 
 
-@router.get("/sections")
-async def get_sections(
-    doc_type: DocumentType = Query(..., description="Тип документа"),
+@router.post("/cluster-to-topic-mapping")
+async def upload_cluster_to_topic_mapping(
+    mapping: dict[str, str] = Body(..., description="Маппинг cluster_id -> topic_key (JSON)"),
+    doc_version_id: UUID = Query(..., description="UUID версии документа"),
+    mapped_by: str = Query("user", description="Кто создал маппинг (user/system)"),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Возвращает дерево taxonomy для указанного doc_type.
-    
-    Включает:
-    - nodes: иерархия секций (parent->child)
-    - aliases: алиасы (alias -> canonical)
-    - related: связанные секции (граф конфликтов)
     """
-    taxonomy_service = TaxonomyService(db)
+    Загружает маппинг cluster_id -> topic_key для конкретного doc_version.
+    
+    Выполняет:
+    1. Upsert в cluster_assignments
+    2. Пересборку topic_evidence через TopicEvidenceBuilder
+    
+    Args:
+        doc_version_id: UUID версии документа
+        mapping: JSON объект вида {"cluster_id": "topic_key", ...}
+        mapped_by: Кто создал маппинг (по умолчанию "user")
+    
+    Returns:
+        Результат операции с количеством созданных/обновленных записей
+    """
+    # Проверяем, что doc_version существует
+    stmt = select(DocumentVersion).where(DocumentVersion.id == doc_version_id)
+    result = await db.execute(stmt)
+    doc_version = result.scalar_one_or_none()
+    
+    if not doc_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document version {doc_version_id} не найден",
+        )
+    
     try:
-        tree = await taxonomy_service.get_tree(doc_type)
-        return tree
+        # Преобразуем mapping: ключи могут быть строками или числами
+        cluster_assignments_data: list[dict[str, Any]] = []
+        for cluster_id_str, topic_key in mapping.items():
+            try:
+                cluster_id = int(cluster_id_str)
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Некорректный cluster_id: {cluster_id_str}",
+                )
+            
+            cluster_assignments_data.append({
+                "cluster_id": cluster_id,
+                "topic_key": topic_key,
+            })
+        
+        # Upsert в cluster_assignments
+        upserted_count = 0
+        for item in cluster_assignments_data:
+            # Проверяем, существует ли уже запись
+            stmt = select(ClusterAssignment).where(
+                ClusterAssignment.doc_version_id == doc_version_id,
+                ClusterAssignment.cluster_id == item["cluster_id"],
+            )
+            result = await db.execute(stmt)
+            existing = result.scalar_one_or_none()
+            
+            if existing:
+                # Обновляем существующую запись
+                existing.topic_key = item["topic_key"]
+                existing.mapped_by = mapped_by
+                existing.confidence = None  # Можно вычислить позже
+            else:
+                # Создаем новую запись
+                assignment = ClusterAssignment(
+                    doc_version_id=doc_version_id,
+                    cluster_id=item["cluster_id"],
+                    topic_key=item["topic_key"],
+                    mapped_by=mapped_by,
+                    confidence=None,
+                    notes=None,
+                )
+                db.add(assignment)
+            
+            upserted_count += 1
+        
+        await db.commit()
+        
+        # Пересобираем topic_evidence
+        builder = TopicEvidenceBuilder(db)
+        evidence_count = await builder.build_evidence_for_doc_version(doc_version_id)
+        
+        logger.info(
+            f"Загружен маппинг для doc_version_id={doc_version_id}: "
+            f"{upserted_count} cluster_assignments, {evidence_count} topic_evidence"
+        )
+        
+        return {
+            "doc_version_id": str(doc_version_id),
+            "cluster_assignments_upserted": upserted_count,
+            "topic_evidence_created": evidence_count,
+        }
+    
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Ошибка при получении taxonomy для {doc_type.value}: {e}")
+        await db.rollback()
+        logger.error(f"Ошибка при загрузке маппинга: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при получении taxonomy: {e}",
+            detail=f"Ошибка при загрузке маппинга: {e}",
         )
 

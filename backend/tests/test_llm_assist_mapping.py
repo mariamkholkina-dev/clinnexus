@@ -24,7 +24,7 @@ from app.db.enums import (
 )
 from app.db.models.anchors import Anchor
 from app.db.models.auth import Workspace
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document as DocumentModel, DocumentVersion, Study
 from app.services.llm_client import LLMCandidate, LLMCandidatesResponse
 from app.services.section_mapping_assist import SectionMappingAssistService
@@ -92,12 +92,12 @@ class TestLLMAssistMapping:
     @pytest.fixture
     async def test_section_contract(
         self, db: AsyncSession, test_workspace: Workspace
-    ) -> SectionContract:
-        """Создает тестовый Section Contract."""
-        contract = SectionContract(
+    ) -> TargetSectionContract:
+        """Создает тестовый TargetSection Contract."""
+        contract = TargetSectionContract(
             workspace_id=test_workspace.id,
             doc_type=DocumentType.PROTOCOL,
-            section_key="protocol.objectives",
+            target_section="protocol.objectives",
             title="Objectives",
             required_facts_json={},
             allowed_sources_json={"doc_types": ["protocol"]},
@@ -235,7 +235,7 @@ class TestLLMAssistMapping:
         mock_llm_client_class,
         db: AsyncSession,
         test_version: DocumentVersion,
-        test_section_contract: SectionContract,
+        test_section_contract: TargetSectionContract,
         test_anchors: list[Anchor],
     ):
         """Тест: apply=false → endpoint возвращает QC report, section_maps не меняются."""
@@ -305,7 +305,7 @@ class TestLLMAssistMapping:
         mock_llm_client_class,
         db: AsyncSession,
         test_version: DocumentVersion,
-        test_section_contract: SectionContract,
+        test_section_contract: TargetSectionContract,
         test_anchors: list[Anchor],
     ):
         """Тест: apply=true → section_map обновляется (mapped_by=system), overridden не трогается."""
@@ -379,7 +379,7 @@ class TestLLMAssistMapping:
         mock_llm_client_class,
         db: AsyncSession,
         test_version: DocumentVersion,
-        test_section_contract: SectionContract,
+        test_section_contract: TargetSectionContract,
         test_anchors: list[Anchor],
     ):
         """Тест: LLM предлагает heading, который не проходит must keywords → qc=rejected."""

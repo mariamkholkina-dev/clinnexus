@@ -68,3 +68,20 @@ class UploadResult(BaseModel):
     size: int  # size_bytes
     status: str  # ingestion_status
 
+
+class ChangedAnchor(BaseModel):
+    """Измененный якорь."""
+    
+    from_anchor_id: str
+    to_anchor_id: str
+    score: float
+    diff_summary: str | None = None
+
+
+class DiffResult(BaseModel):
+    """Результат сравнения версий документа."""
+    
+    matched: int
+    changed: list[ChangedAnchor]
+    added: list[str]  # anchor_ids
+    removed: list[str]  # anchor_ids

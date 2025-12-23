@@ -12,10 +12,12 @@ from app.core.audit import log_audit
 from app.core.errors import NotFoundError, ValidationError
 from app.db.models.studies import Document, DocumentVersion, Study
 from app.db.models.facts import Fact, FactEvidence
+from app.db.models.core_facts import StudyCoreFacts
 from app.db.models.auth import Workspace
 from app.schemas.studies import StudyCreate, StudyOut
 from app.schemas.documents import DocumentOut, DocumentVersionOut
 from app.schemas.facts import FactOut, FactEvidenceOut
+from app.services.core_facts_extractor import CoreFactsExtractor
 
 router = APIRouter()
 
@@ -185,6 +187,53 @@ async def list_study_facts(
         facts_out.append(fact_out)
 
     return facts_out
+
+
+@router.get(
+    "/studies/{study_id}/core-facts",
+    response_model=dict,
+)
+async def get_study_core_facts(
+    study_id: UUID,
+    version: int | None = Query(None, description="Номер версии core facts (если не указан, возвращается latest)"),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Получение основных фактов исследования (Core Study Facts).
+    
+    Args:
+        study_id: UUID исследования
+        version: Опциональный номер версии (если не указан, возвращается latest)
+    
+    Returns:
+        Словарь с core facts (facts_json) и метаданными
+    """
+    # Проверяем существование study
+    study = await db.get(Study, study_id)
+    if not study:
+        raise NotFoundError("Study", str(study_id))
+
+    # Получаем core facts
+    extractor = CoreFactsExtractor(db)
+    core_facts = await extractor.get_latest_core_facts(study_id, version=version)
+
+    if not core_facts:
+        return {
+            "study_id": str(study_id),
+            "version": None,
+            "facts_json": {},
+            "derived_from_doc_version_id": None,
+            "created_at": None,
+        }
+
+    return {
+        "study_id": str(core_facts.study_id),
+        "version": core_facts.facts_version,
+        "facts_json": core_facts.facts_json,
+        "derived_from_doc_version_id": str(core_facts.derived_from_doc_version_id) if core_facts.derived_from_doc_version_id else None,
+        "doc_version_id": str(core_facts.doc_version_id) if core_facts.doc_version_id else None,
+        "created_at": core_facts.created_at.isoformat() if core_facts.created_at else None,
+    }
 
 
 

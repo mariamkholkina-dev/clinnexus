@@ -17,12 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
-from app.db.enums import AnchorContentType, EvidenceRole, FactStatus
+from app.db.enums import AnchorContentType, DocumentLanguage, EvidenceRole, FactStatus
 from app.db.models.anchors import Anchor
 from app.db.models.facts import Fact, FactEvidence
 from app.db.models.studies import Document as DocumentModel, DocumentVersion
 from app.schemas.common import SoAResult, SoAVisit, SoAProcedure, SoAMatrixEntry, SoANote
-from app.services.ingestion.docx_ingestor import normalize_text, get_text_hash, normalize_section_path
+from app.services.ingestion.docx_ingestor import normalize_text, get_text_hash, normalize_section_path, detect_text_language
 
 
 @dataclass
@@ -38,6 +38,7 @@ class CellAnchorCreate:
     text_norm: str
     text_hash: str
     location_json: dict[str, Any]
+    language: DocumentLanguage = DocumentLanguage.UNKNOWN
 
 
 @dataclass
@@ -48,6 +49,10 @@ class TableScore:
     score: float
     section_path: str
     reason: str
+
+
+# Версия SoAExtractionService (увеличивается при изменении логики извлечения SoA)
+VERSION = "1.0.0"
 
 
 class SoAExtractionService:
@@ -135,6 +140,9 @@ class SoAExtractionService:
             "график процедур",
             "расписание мероприятий",
             "график мероприятий",
+            "график проведения",  # Добавляем "график проведения процедур"
+            "график проведения процедур",
+            "график проведения исследований",
         ]
         # Негативный контекст (приложения/шкалы/анкеты)
         neg = [
@@ -228,24 +236,55 @@ class SoAExtractionService:
         )
         
         # Проверяем наличие "Visit", "Day", "Week", "Screening", "Baseline"
-        visit_keywords = ["visit", "day", "week", "screening", "baseline", "визит", "день", "неделя"]
+        # Расширяем поиск: проверяем первые 3 строки и первые 10 столбцов для лучшего распознавания
+        visit_keywords = ["visit", "day", "week", "screening", "baseline", "визит", "день", "неделя", "цикл"]
         visit_keywords_found = []
-        for cell_text in first_row_cells[:10] + first_col_cells[:5]:
+        
+        # Проверяем первую строку
+        for cell_text in first_row_cells[:10]:
             cell_lower = cell_text.lower()
             for keyword in visit_keywords:
                 if keyword in cell_lower:
                     if keyword not in visit_keywords_found:
                         score += 3.0
-                        reasons.append(f"Найдено '{keyword}' в заголовках")
+                        reasons.append(f"Найдено '{keyword}' в первой строке")
                         visit_keywords_found.append(keyword)
                     break
         
+        # Проверяем первый столбец (первые 5 строк)
+        for cell_text in first_col_cells[:5]:
+            cell_lower = cell_text.lower()
+            for keyword in visit_keywords:
+                if keyword in cell_lower:
+                    if keyword not in visit_keywords_found:
+                        score += 3.0
+                        reasons.append(f"Найдено '{keyword}' в первом столбце")
+                        visit_keywords_found.append(keyword)
+                    break
+        
+        # Дополнительно проверяем вторую и третью строки (для случаев, когда заголовок визитов не в первой строке)
+        for row_idx in range(1, min(3, len(table.rows))):
+            if len(table.rows[row_idx].cells) > 0:
+                row_cells = [normalize_text(cell.text) for cell in table.rows[row_idx].cells[:10]]
+                for cell_text in row_cells:
+                    cell_lower = cell_text.lower()
+                    for keyword in visit_keywords:
+                        if keyword in cell_lower:
+                            if keyword not in visit_keywords_found:
+                                score += 3.0
+                                reasons.append(f"Найдено '{keyword}' в строке {row_idx + 1}")
+                                visit_keywords_found.append(keyword)
+                            break
+        
         # Проверяем наличие маркеров X, ✓, NA, —
+        # Учитываем как латинскую "X", так и кириллическую "Х" (U+0425)
         marker_count = 0
         for row in table.rows:
             for cell in row.cells:
                 cell_text = normalize_text(cell.text).upper()
-                if cell_text in ["X", "✓", "NA", "—", "-", "YES", "NO"]:
+                # Нормализуем кириллическую "Х" к латинской "X" для распознавания
+                cell_text_normalized = cell_text.replace("Х", "X")  # Кириллическая Х -> латинская X
+                if cell_text_normalized in ["X", "✓", "NA", "—", "-", "YES", "NO"]:
                     marker_count += 1
         
         if marker_count > 5:
@@ -264,7 +303,9 @@ class SoAExtractionService:
         for row in table.rows:
             for cell in row.cells:
                 cell_text = normalize_text(cell.text).upper()
-                if not cell_text or cell_text in ["X", "✓", "NA", "—", "-", "YES", "NO", ""]:
+                # Нормализуем кириллическую "Х" к латинской "X"
+                cell_text_normalized = cell_text.replace("Х", "X")
+                if not cell_text or cell_text_normalized in ["X", "✓", "NA", "—", "-", "YES", "NO", ""]:
                     empty_or_marker_cells += 1
         
         if total_cells > 0:
@@ -482,20 +523,28 @@ class SoAExtractionService:
             text_norm = normalize_text(text_raw)
             text_hash = get_text_hash(text_norm)
             
+            # Определяем язык для cell anchor (RU → ru, EN → en, иначе unknown)
+            cell_language = detect_text_language(text_norm)
+            
             key = (section_path, AnchorContentType.CELL)
             ordinal = ordinal_counters.get(key, 0) + 1
             ordinal_counters[key] = ordinal
             
-            anchor_id = f"{doc_version_id}:{section_path}:{AnchorContentType.CELL.value}:{ordinal}:{text_hash}"
-            visit_anchor_ids[idx] = anchor_id
-            
-            # Определяем row_idx и col_idx
+            # Определяем row_idx и col_idx (нужно для anchor_id)
             if is_rows_procedures:
                 row_idx = 0
                 col_idx = idx + 1
             else:
                 row_idx = idx + 1
                 col_idx = 0
+            
+            # Формируем anchor_id: используем хеш контента с координатами для различения ячеек
+            # Координаты включены в хеш, но не в ID напрямую (они остаются в location_json)
+            # Формат: {doc_version_id}:cell:{get_text_hash(text_norm + section_path[:100] + ":row:col")[:16]}
+            cell_hash_input = f"{text_norm}:{section_path[:100]}:{row_idx}:{col_idx}"
+            cell_hash = get_text_hash(cell_hash_input)[:16]
+            anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+            visit_anchor_ids[idx] = anchor_id
             
             location_json = {
                 "table_id": table_index,
@@ -517,6 +566,7 @@ class SoAExtractionService:
                 text_norm=text_norm,
                 text_hash=text_hash,
                 location_json=location_json,
+                language=cell_language,
             )
             cell_anchors.append(cell_anchor)
             
@@ -553,20 +603,28 @@ class SoAExtractionService:
             text_norm = normalize_text(text_raw)
             text_hash = get_text_hash(text_norm)
             
+            # Определяем язык для cell anchor (RU → ru, EN → en, иначе unknown)
+            cell_language = detect_text_language(text_norm)
+            
             key = (section_path, AnchorContentType.CELL)
             ordinal = ordinal_counters.get(key, 0) + 1
             ordinal_counters[key] = ordinal
             
-            anchor_id = f"{doc_version_id}:{section_path}:{AnchorContentType.CELL.value}:{ordinal}:{text_hash}"
-            proc_anchor_ids[idx] = anchor_id
-            
-            # Определяем row_idx и col_idx
+            # Определяем row_idx и col_idx (нужно для anchor_id)
             if is_rows_procedures:
                 row_idx = idx + 1
                 col_idx = 0
             else:
                 row_idx = 0
                 col_idx = idx + 1
+            
+            # Формируем anchor_id: используем хеш контента с координатами для различения ячеек
+            # Координаты включены в хеш, но не в ID напрямую (они остаются в location_json)
+            # Формат: {doc_version_id}:cell:{get_text_hash(text_norm + section_path[:100] + ":row:col")[:16]}
+            cell_hash_input = f"{text_norm}:{section_path[:100]}:{row_idx}:{col_idx}"
+            cell_hash = get_text_hash(cell_hash_input)[:16]
+            anchor_id = f"{doc_version_id}:cell:{cell_hash}"
+            proc_anchor_ids[idx] = anchor_id
             
             location_json = {
                 "table_id": table_index,
@@ -588,6 +646,7 @@ class SoAExtractionService:
                 text_norm=text_norm,
                 text_hash=text_hash,
                 location_json=location_json,
+                language=cell_language,
             )
             cell_anchors.append(cell_anchor)
             
@@ -624,15 +683,23 @@ class SoAExtractionService:
                     text_norm = normalize_text(text_raw)
                     text_hash = get_text_hash(text_norm)
                     
+                    # Определяем язык для cell anchor (RU → ru, EN → en, иначе unknown)
+                    cell_language = detect_text_language(text_norm)
+                    
                     key = (section_path, AnchorContentType.CELL)
                     ordinal = ordinal_counters.get(key, 0) + 1
                     ordinal_counters[key] = ordinal
                     
-                    anchor_id = f"{doc_version_id}:{section_path}:{AnchorContentType.CELL.value}:{ordinal}:{text_hash}"
-                    
                     # Определяем header_path
                     row_headers = [procedures[proc_idx].label] if proc_idx < len(procedures) else []
                     col_headers = [visits[visit_idx].label] if visit_idx < len(visits) else []
+                    
+                    # Формируем anchor_id: используем хеш контента с координатами для различения ячеек
+                    # Координаты включены в хеш, но не в ID напрямую (они остаются в location_json)
+                    # Формат: {doc_version_id}:cell:{get_text_hash(text_norm + section_path[:100] + ":row:col")[:16]}
+                    cell_hash_input = f"{value_norm}:{section_path[:100]}:{row_idx}:{col_idx}"
+                    cell_hash = get_text_hash(cell_hash_input)[:16]
+                    anchor_id = f"{doc_version_id}:cell:{cell_hash}"
                     
                     location_json = {
                         "table_id": table_index,
@@ -657,6 +724,7 @@ class SoAExtractionService:
                         text_norm=text_norm,
                         text_hash=text_hash,
                         location_json=location_json,
+                        language=cell_language,
                     )
                     cell_anchors.append(cell_anchor)
                     

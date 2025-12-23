@@ -9,7 +9,11 @@ backend/
 │   └── versions/
 │       ├── __init__.py
 │       ├── 0001_initial_prod_skeleton.py  # Все таблицы + базовые индексы
-│       └── 0002_enums_and_vector.py        # ENUM статусы + pgvector + индексы
+│       ├── 0002_enums_and_vector.py        # ENUM статусы + pgvector + индексы
+│       ├── 0003_make_document_version_file_fields_nullable.py  # source_file_uri и source_sha256 nullable
+│       ├── 0004_add_document_language.py  # document_language enum и поле в document_versions
+│       ├── 0005_unique_fact_evidence.py   # Уникальный индекс на fact_evidence
+│       └── 0006_add_section_taxonomy.py   # Таблицы section taxonomy (nodes, aliases, related)
 ├── alembic.ini                   # Конфигурация Alembic
 ├── app/
 │   └── db/
@@ -22,6 +26,7 @@ backend/
 │           ├── studies.py         # studies, documents, document_versions
 │           ├── anchors.py         # anchors, chunks
 │           ├── sections.py       # section_contracts, section_maps
+│           ├── taxonomy.py       # section_taxonomy_nodes, section_taxonomy_aliases, section_taxonomy_related
 │           ├── facts.py          # facts, fact_evidence
 │           ├── generation.py     # templates, model_configs, generation_runs, generated_sections
 │           ├── conflicts.py      # conflicts, conflict_items
@@ -89,14 +94,31 @@ alembic downgrade base
 
 ### anchor_id формат
 
+Для paragraph-anchors (P/LI/HDR):
 ```
-{doc_version_id}:{section_path}:{content_type}:{ordinal}:{hash(text_norm)}
+{doc_version_id}:{content_type}:{para_index}:{hash(text_norm)}
 ```
 
-Пример:
+Для footnotes (FN):
 ```
-aa0e8400-e29b-41d4-a716-446655440005:3.2.1:p:1:hash123
+{doc_version_id}:fn:{fn_index}:{fn_para_index}:{hash(text_norm)}
 ```
+
+Для cell-anchors (CELL):
+```
+{doc_version_id}:cell:{table_index}:{row_idx}:{col_idx}:{hash(text_norm)}
+```
+
+Примеры:
+```
+# Paragraph anchor
+aa0e8400-e29b-41d4-a716-446655440005:p:42:hash123
+
+# Footnote anchor
+aa0e8400-e29b-41d4-a716-446655440005:fn:1:2:hash456
+```
+
+ВАЖНО: `section_path` и `ordinal` НЕ входят в `anchor_id` для стабильности при переносах между разделами.
 
 ## Примеры данных
 
@@ -121,6 +143,7 @@ aa0e8400-e29b-41d4-a716-446655440005:3.2.1:p:1:hash123
 - `section_map_status`: mapped, needs_review, overridden
 - `mapped_by`: system, user
 - `citation_policy`: per_sentence, per_claim, none
+- `document_language`: ru, en, mixed, unknown
 
 ### pgvector
 
@@ -146,6 +169,28 @@ aa0e8400-e29b-41d4-a716-446655440005:3.2.1:p:1:hash123
 - `conflicts(status)`, `conflicts(severity)`
 - `tasks(status)`, `tasks(type)`
 - `section_maps(status)`
+
+**Миграция 0003 (nullable file fields):**
+- `document_versions.source_file_uri` и `document_versions.source_sha256` теперь nullable (версия может быть создана до загрузки файла)
+
+**Миграция 0004 (document_language):**
+- Добавлен enum `document_language` (ru, en, mixed, unknown)
+- Добавлено поле `document_versions.document_language` (NOT NULL, default 'unknown')
+- Автодетект языка при upload DOCX
+
+**Миграция 0005 (unique fact_evidence):**
+- Уникальный индекс `uq_fact_evidence_fact_anchor_role` на `(fact_id, anchor_id, evidence_role)` для предотвращения дубликатов
+
+**Миграция 0006 (section taxonomy):**
+- `section_taxonomy_nodes`: иерархия секций (doc_type, section_key, title_ru, parent_section_key, is_narrow, expected_content)
+  - Уникальность: `(doc_type, section_key)`
+  - Индекс: `(doc_type, parent_section_key)`
+- `section_taxonomy_aliases`: алиасы секций (doc_type, alias_key, canonical_key, reason)
+  - Уникальность: `(doc_type, alias_key)`
+  - Индекс: `(doc_type, canonical_key)`
+- `section_taxonomy_related`: связанные секции (doc_type, a_section_key, b_section_key, reason)
+  - Уникальность: `(doc_type, a_section_key, b_section_key)` (лексикографически нормализовано)
+  - Индексы: `(doc_type, a_section_key)`, `(doc_type, b_section_key)`
 
 ## Требования
 

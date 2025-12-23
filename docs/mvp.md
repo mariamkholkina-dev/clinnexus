@@ -173,7 +173,7 @@ UI:
 **anchors** *(с content_type и location_json)*
 **chunks** *(pgvector)*
 **facts, fact_evidence**
-**templates, section_contracts**
+**templates, target_section_contracts** (переименовано из `section_contracts` в миграции 0017)
 **generation_runs, generated_sections**
 **conflicts, conflict_items**
 **change_events, impact_items, tasks**

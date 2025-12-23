@@ -31,6 +31,7 @@ def _mk_anchor(
     content_type: AnchorContentType,
     ordinal: int,
     text_raw: str,
+    source_zone: str = "unknown",
 ) -> Anchor:
     return Anchor(
         doc_version_id=doc_version_id,
@@ -43,6 +44,7 @@ def _mk_anchor(
         text_hash="x" * 64,
         location_json={"p": ordinal},
         confidence=1.0,
+        source_zone=source_zone,
     )
 
 

@@ -1,4 +1,4 @@
-## STATUS REPORT (на дату: 2025-12-17)
+## STATUS REPORT (на дату: 2025-12-23)
 
 ### 1) Стек и запуск (команды)
 
@@ -53,10 +53,20 @@
 - `GET /api/section-contracts?doc_type=...&is_active=...` — список контрактов  
 - `POST /api/section-contracts` — создание контракта (в MVP запрещено по умолчанию: `ENABLE_CONTRACT_EDITING=false`)  
 - `GET /api/document-versions/{version_id}/section-maps` — список маппингов  
-- `POST /api/document-versions/{version_id}/section-maps/{section_key}/override` — override пользователем  
+- `POST /api/document-versions/{version_id}/section-maps/{target_section}/override` — override пользователем (target_section вместо section_key)  
 - `POST /api/document-versions/{version_id}/section-maps/rebuild?force=...` — пересборка system mappings  
 - `POST /api/document-versions/{version_id}/section-maps/assist` — LLM-assisted mapping (gated secure_mode + keys)  
   - Файл: `backend/app/api/v1/sections.py`
+
+**Passport tuning / Topics (по коду):**
+- `GET /api/passport-tuning/clusters` — список кластеров заголовков (пагинация, поиск)  
+- `GET /api/passport-tuning/mapping` — текущий маппинг cluster_id -> target_section  
+- `POST /api/passport-tuning/mapping` — сохранение маппинга (с нормализацией через taxonomy)  
+- `GET /api/passport-tuning/mapping/download` — скачать маппинг как JSON  
+- `GET /api/passport-tuning/mapping/for_autotune` — маппинг для автотюнинга (исключает ambiguous/skip)  
+- `GET /api/passport-tuning/sections?doc_type=...` — дерево taxonomy для doc_type  
+- `POST /api/passport-tuning/cluster-to-topic-mapping` — загрузка маппинга cluster_id -> topic_key для doc_version  
+  - Файл: `backend/app/api/v1/passport_tuning.py`
 
 **Generation / Conflicts / Impact / Tasks (по коду):**
 - `POST /api/generate/section` — генерация секции (MVP: детерминированный черновик + QC)  
@@ -83,23 +93,49 @@
 - `memberships(id, workspace_id, user_id, role, created_at)` + uq(workspace_id,user_id) — `backend/app/db/models/auth.py`
 - `studies(id, workspace_id, study_code, title, status, created_at)` + uq(workspace_id,study_code) — `backend/app/db/models/studies.py`
 - `documents(id, workspace_id, study_id, doc_type, title, lifecycle_status, created_at)` — `backend/app/db/models/studies.py`
-- `document_versions(id, document_id, version_label, source_file_uri, source_sha256, effective_date, ingestion_status, ingestion_summary_json, document_language, created_by, created_at)` — `backend/app/db/models/studies.py`
-- `anchors(id, doc_version_id, anchor_id[unique], section_path, content_type, ordinal, text_raw, text_norm, text_hash, location_json, confidence, created_at)` — `backend/app/db/models/anchors.py`
-- `chunks(id, doc_version_id, chunk_id[unique], section_path, text, anchor_ids[], embedding vector(1536), metadata_json, created_at)` — `backend/app/db/models/anchors.py`, индексы/pgvector: `backend/alembic/versions/0002_enums_and_vector.py`
-- `section_contracts(id, workspace_id, doc_type, section_key, title, required_facts_json, allowed_sources_json, retrieval_recipe_json, qc_ruleset_json, citation_policy, version, is_active, created_at)` + uq(workspace_id,doc_type,section_key,version) — `backend/app/db/models/sections.py`
-- `section_maps(id, doc_version_id, section_key, anchor_ids[], chunk_ids[], confidence, status, mapped_by, notes, created_at)` — `backend/app/db/models/sections.py`
+- `document_versions(id, document_id, version_label, source_file_uri, source_sha256, effective_date, ingestion_status, ingestion_summary_json, document_language, last_ingestion_run_id, created_by, created_at)` — `backend/app/db/models/studies.py`
+  - `last_ingestion_run_id` — ссылка на последний запуск ингестии (миграция 0013)
+- `anchors(id, doc_version_id, anchor_id[unique], section_path, content_type, ordinal, text_raw, text_norm, text_hash, location_json, source_zone, language, confidence, created_at)` — `backend/app/db/models/anchors.py`
+  - `source_zone`: ENUM с 12 каноническими ключами + "unknown" (миграция 0012)
+  - `language`: enum (ru/en/mixed/unknown) (миграция 0007)
+  - Индексы: `ix_anchors_doc_version_source_zone` (миграция 0012)
+- `chunks(id, doc_version_id, chunk_id[unique], section_path, text, anchor_ids[], embedding vector(1536), metadata_json, source_zone, language, created_at)` — `backend/app/db/models/anchors.py`
+  - `source_zone`: ENUM с 12 каноническими ключами + "unknown", наследуется от anchors (most_common) (миграция 0012)
+  - `language`: enum (ru/en/mixed/unknown), наследуется от anchors (миграция 0007)
+  - Индексы: `ix_chunks_doc_version_source_zone` (миграция 0012), pgvector: `backend/alembic/versions/0002_enums_and_vector.py`
+- `target_section_contracts(id, workspace_id, doc_type, target_section, view_key, title, required_facts_json, allowed_sources_json, retrieval_recipe_json, qc_ruleset_json, citation_policy, version, is_active, created_at)` + uq(workspace_id,doc_type,target_section,version) — `backend/app/db/models/sections.py` (переименовано из `section_contracts` в миграции 0017)
+  - `target_section`: один из 12 канонических ключей (валидация в моделях и схемах, миграция 0012)
+  - `retrieval_recipe_json.prefer_source_zones`: приоритетные source_zone для retrieval (автоматически заполняются из правил)
+  - `retrieval_recipe_json.fallback_source_zones`: резервные source_zone
+- `target_section_maps(id, doc_version_id, target_section, anchor_ids[], chunk_ids[], confidence, status, mapped_by, notes, created_at)` — `backend/app/db/models/sections.py` (переименовано из `section_maps` в миграции 0017, section_key переименован в target_section в миграции 0007)
 - `facts(id, study_id, fact_type, fact_key, value_json, unit, status, created_from_doc_version_id, created_at, updated_at)` + uq(study_id,fact_type,fact_key) — `backend/app/db/models/facts.py`
 - `fact_evidence(id, fact_id, anchor_id, evidence_role, created_at)` + uq(fact_id,anchor_id,evidence_role) — `backend/app/db/models/facts.py`, уникальный индекс: `backend/alembic/versions/0005_unique_fact_evidence.py`
 - `templates(id, workspace_id, doc_type, name, template_body, version, created_at)` — `backend/app/db/models/generation.py`
 - `model_configs(id, provider, model_name, prompt_version, params_json, created_at)` — `backend/app/db/models/generation.py`
-- `generation_runs(id, study_id, target_doc_type, section_key, template_id, contract_id, input_snapshot_json, model_config_id, status, created_by, created_at)` — `backend/app/db/models/generation.py`
-- `generated_sections(id, generation_run_id, content_text, artifacts_json, qc_status, qc_report_json, published_to_document_version_id, created_at)` — `backend/app/db/models/generation.py`
+- `generation_runs(id, study_id, target_doc_type, target_section, view_key, template_id, contract_id, input_snapshot_json, model_config_id, status, created_by, created_at)` — `backend/app/db/models/generation.py` (section_key переименован в target_section, добавлен view_key)
+- `generated_target_sections(id, generation_run_id, content_text, artifacts_json, qc_status, qc_report_json, published_to_document_version_id, created_at)` — `backend/app/db/models/generation.py` (переименовано из `generated_sections` в миграции 0017)
 - `conflicts(id, study_id, conflict_type, severity, status, title, description, owner_user_id, created_at, updated_at)` — `backend/app/db/models/conflicts.py`
 - `conflict_items(id, conflict_id, left_anchor_id, right_anchor_id, left_fact_id, right_fact_id, evidence_json, created_at)` — `backend/app/db/models/conflicts.py`
 - `change_events(id, study_id, source_document_id, from_version_id, to_version_id, diff_summary_json, created_at)` — `backend/app/db/models/change.py`
-- `impact_items(id, change_event_id, affected_doc_type, affected_section_key, reason_json, recommended_action, status, created_at)` — `backend/app/db/models/change.py`
+- `impact_items(id, change_event_id, affected_doc_type, affected_target_section, reason_json, recommended_action, status, created_at)` — `backend/app/db/models/change.py` (affected_section_key переименован в affected_target_section)
 - `tasks(id, study_id, type, status, assigned_to, payload_json, created_at, updated_at)` — `backend/app/db/models/change.py`
 - `audit_log(id, workspace_id, actor_user_id, action, entity_type, entity_id, before_json, after_json, created_at)` — `backend/app/db/models/audit.py`
+- `anchor_matches(id, document_id, from_doc_version_id, to_doc_version_id, from_anchor_id, to_anchor_id, score, method, meta_json, created_at)` + uq(from_doc_version_id,to_doc_version_id,from_anchor_id) — `backend/app/db/models/anchor_matches.py`, миграция: `backend/alembic/versions/0009_add_anchor_matches.py`
+- `topics(id, workspace_id, topic_key, title_ru, title_en, description, topic_profile_json, is_active, topic_embedding, applicable_to_json, created_at)` + uq(workspace_id,topic_key) — `backend/app/db/models/topics.py`, миграции: `backend/alembic/versions/0008_add_topics_tables.py`, `0014_extend_topics_production_quality.py`, `0018_add_topic_doc_type_profiles_and_priors.py`
+  - `topic_profile_json` — профиль топика с aliases, keywords, source_zones, dissimilar_zones, embeddings (миграция 0014)
+  - `is_active` — активность топика (миграция 0014)
+  - `topic_embedding` — векторное представление топика VECTOR(1536) (миграция 0014)
+  - `applicable_to_json` — список doc_type, к которым применим топик (миграция 0018)
+- `cluster_assignments(id, doc_version_id, cluster_id, topic_key, mapped_by, confidence, notes, mapping_debug_json, created_at)` + uq(doc_version_id,cluster_id) — `backend/app/db/models/topics.py`, миграции: `backend/alembic/versions/0008_add_topics_tables.py`, `0015_add_mapping_debug_json_to_cluster_assignments.py`
+  - `mapping_debug_json` — debug-информация о маппинге кластера на топик (миграция 0015)
+- `topic_evidence(id, doc_version_id, topic_key, source_zone, language, anchor_ids[], chunk_ids[], score, evidence_json, created_at)` + uq(doc_version_id,topic_key,source_zone,language) — `backend/app/db/models/topics.py`, миграция: `backend/alembic/versions/0008_add_topics_tables.py`
+- `study_core_facts(id, study_id, doc_version_id, facts_json, facts_version, derived_from_doc_version_id, created_at)` — `backend/app/db/models/core_facts.py`, миграция: `backend/alembic/versions/0010_add_study_core_facts.py`
+- `ingestion_runs(id, doc_version_id, status, started_at, finished_at, duration_ms, pipeline_version, pipeline_config_hash, summary_json, quality_json, warnings_json, errors_json)` — `backend/app/db/models/ingestion.py`, миграция: `backend/alembic/versions/0013_add_ingestion_runs.py`
+- `heading_clusters(id, doc_version_id, cluster_id, language, top_titles_json, examples_json, stats_json, cluster_embedding, created_at)` + uq(doc_version_id,cluster_id,language) — `backend/app/db/models/topics.py`, миграция: `backend/alembic/versions/0014_extend_topics_production_quality.py`
+- `topic_mapping_runs(id, doc_version_id, mode, params_json, metrics_json, pipeline_version, pipeline_config_hash, created_at)` — `backend/app/db/models/topics.py`, миграции: `backend/alembic/versions/0014_extend_topics_production_quality.py`, `0016_add_topic_indexes_and_constraints.py`
+- `topic_zone_priors(id, topic_id, doc_type, zone_key, prior_weight, created_at)` + uq(topic_id,doc_type,zone_key) — `backend/app/db/models/topics.py`, миграция: `backend/alembic/versions/0018_add_topic_doc_type_profiles_and_priors.py`
+- `zone_sets(id, doc_type, zone_key, is_active, created_at)` — миграция: `backend/alembic/versions/0019_add_zone_sets_and_crosswalk.py`
+- `zone_crosswalk(id, from_doc_type, from_zone_key, to_doc_type, to_zone_key, weight, created_at)` + uq(from_doc_type,from_zone_key,to_doc_type,to_zone_key) — миграция: `backend/alembic/versions/0019_add_zone_sets_and_crosswalk.py`
 
 ### 4) Где реализован ingest → anchors и как формируется `anchor_id`
 
@@ -112,7 +148,7 @@
   - удаляет старые `anchors` и `facts` от этой версии,
   - парсит DOCX через `DocxIngestor.ingest(...)` → создаёт `anchors` (bulk insert),
   - запускает `SoAExtractionService.extract_soa(...)` → создаёт cell anchors + факты `soa.*`,
-  - запускает `SectionMappingService.map_sections(...)` → создаёт/обновляет `section_maps`,
+  - запускает `SectionMappingService.map_sections(...)` → создаёт/обновляет `target_section_maps`,
   - собирает warnings/needs_review и summary для `ingestion_summary_json` (стабильная схема ключей + всегда заполняется даже при ошибках).  
   - Файл: `backend/app/services/ingestion/__init__.py`
 
@@ -122,9 +158,9 @@
     - правило/описание: `backend/DATABASE_SETUP.md`, `docs/ARCHITECTURE.md`, `backend/app/db/models/anchors.py`
     - генерация: `backend/app/services/ingestion/docx_ingestor.py` (нормализация текста, `sha256`, сбор `section_path`, `ordinal`, конкатенация в строку)
 
-### 5) Где реализованы `section_contracts` и seed, что сейчас падает и почему
+### 5) Где реализованы `target_section_contracts` и seed, что сейчас падает и почему
 
-**`section_contracts` (таблица + API):**
+**`target_section_contracts` (таблица + API, переименована из `section_contracts` в миграции 0017):**
 - ORM: `backend/app/db/models/sections.py` (`SectionContract`)
 - GET list: `backend/app/api/v1/sections.py` (`GET /api/section-contracts`)
 - POST create: `backend/app/api/v1/sections.py` (`POST /api/section-contracts`)  
@@ -155,6 +191,9 @@
   - Gating: `SECURE_MODE=true` и наличие ключей.  
   - Файлы: `backend/app/services/section_mapping_assist.py`, `backend/app/services/section_mapping_qc.py`, `backend/app/services/llm_client.py`, `backend/app/api/v1/sections.py`, `backend/app/core/config.py`
 
+**Section Taxonomy:**
+- Таблицы taxonomy удалены (миграция 0020). Структура документов определяется через templates и target_section_contracts.
+
 **SoA extraction (DOCX):**
 - Реализован детектор таблицы SoA по скорингу (keywords + структура + маркеры X/✓ + штрафы), извлечение visits/procedures/matrix, создание cell anchors + запись в facts (`fact_type="soa"`, keys: `visits|procedures|matrix`) + evidence.  
   - Файлы: `backend/app/services/soa_extraction.py`, использование: `backend/app/services/ingestion/__init__.py`, чтение API: `backend/app/api/v1/documents.py`
@@ -166,8 +205,61 @@
 - **Step 4 (DOCX anchors)**: anchors создаются для `hdr/p/li`, добавлена попытка извлечения `fn` (с graceful skip + warning при недоступности).
 - **Step 5 (SoA + evidence)**: cell anchors включают `location_json.table_id/row_idx/col_idx/header_path`, расширены RU/EN ключевые слова детектора; тесты проверяют, что evidence ссылается на реальные `cell` anchors.
 - **Step 5.5 (Rules-first fact extraction)**: реализовано извлечение фактов `protocol_version`, `amendment_date`, `planned_n_total` с поддержкой RU/EN паттернов; интегрировано в ingest пайплайн; evidence идемпотентно заменяется при повторных прогонах.
+- **Миграция 0003 (nullable file fields)**: поля `source_file_uri` и `source_sha256` в `document_versions` теперь nullable (версия может быть создана до загрузки файла).
 - **Миграция 0004 (document_language)**: добавлен enum `document_language` (`ru|en|mixed|unknown`) и поле в `document_versions`; автодетект языка при upload DOCX (если `document_language=UNKNOWN`).
 - **Миграция 0005 (unique fact_evidence)**: добавлен уникальный индекс `(fact_id, anchor_id, evidence_role)` для предотвращения дубликатов evidence при повторных прогонах.
+- **Миграция 0006 (section taxonomy)**: добавлены таблицы для иерархии секций (удалены в миграции 0020).
+- **Миграция 0007 (rename section_key → target_section)**: переименование `section_key` в `target_section` во всех таблицах:
+  - `target_section_contracts` (переименовано из `section_contracts`), `target_section_maps` (переименовано из `section_maps`), `generation_runs`, `impact_items`
+  - Добавлено поле `view_key` в `target_section_contracts` и `generation_runs`
+  - Добавлены поля `source_zone` (TEXT) и `language` в `anchors` и `chunks` с индексами (обновлено на ENUM в миграции 0012)
+- **Миграция 0011 (fact metadata)**: добавлены поля метаданных в таблицу `facts`:
+  - `confidence` (float) — уверенность в извлеченном факте
+  - `extractor_version` (int) — версия экстрактора
+  - `meta_json` (jsonb) — дополнительные метаданные
+- **Миграция 0012 (стандартизация 12 основных секций)**: 
+  - Создание ENUM `source_zone` с 12 каноническими ключами: `overview`, `design`, `ip`, `statistics`, `safety`, `endpoints`, `population`, `procedures`, `data_management`, `ethics`, `admin`, `appendix` + `unknown`
+  - Обновление `anchors.source_zone` и `chunks.source_zone` на ENUM
+  - Маппинг старых значений на канонические (например, `randomization` → `design`, `adverse_events` → `safety`)
+  - Добавление индексов `(doc_version_id, source_zone)` для быстрого поиска
+  - Валидация `target_section` на 12 канонических ключей в моделях и схемах
+  - Правила `prefer_source_zones` для каждой `target_section` в `target_section_contracts.retrieval_recipe_json`
+  - Обновление `SourceZoneClassifier` для работы с новыми зонами и поддержки `heading_text` и `language`
+- **Миграция 0008 (topics tables)**: добавлены таблицы для работы с топиками:
+  - `topics`: топики с workspace_id, topic_key, title_ru/en, description
+  - `cluster_assignments`: привязка кластеров к топикам для doc_version
+  - `topic_evidence`: агрегированные доказательства для топиков с anchor_ids, chunk_ids, source_zone, language
+- **Миграция 0009 (anchor_matches)**: добавлена таблица `anchor_matches` для выравнивания якорей между версиями документов
+- **Миграция 0010 (study_core_facts)**: добавлена таблица `study_core_facts` для структурированных основных фактов исследования
+- **Миграция 0011 (fact metadata)**: добавлены поля метаданных в таблицу `facts`:
+  - `confidence` (float) — уверенность в извлеченном факте
+  - `extractor_version` (int) — версия экстрактора
+  - `meta_json` (jsonb) — дополнительные метаданные
+- **Миграция 0012 (стандартизация 12 основных секций)**: 
+  - Создание ENUM `source_zone` с 12 каноническими ключами: `overview`, `design`, `ip`, `statistics`, `safety`, `endpoints`, `population`, `procedures`, `data_management`, `ethics`, `admin`, `appendix` + `unknown`
+  - Обновление `anchors.source_zone` и `chunks.source_zone` на ENUM
+  - Маппинг старых значений на канонические (например, `randomization` → `design`, `adverse_events` → `safety`)
+  - Добавление индексов `(doc_version_id, source_zone)` для быстрого поиска
+  - Валидация `target_section` на 12 канонических ключей в моделях и схемах
+  - Правила `prefer_source_zones` для каждой `target_section` в `target_section_contracts.retrieval_recipe_json`
+  - Обновление `SourceZoneClassifier` для работы с новыми зонами и поддержки `heading_text` и `language`
+- **Миграция 0013 (ingestion_runs)**: добавлена таблица `ingestion_runs` для отслеживания запусков ингестии с метриками, качеством и предупреждениями; добавлено поле `last_ingestion_run_id` в `document_versions`
+- **Миграция 0014 (topics production quality)**: расширение поддержки topics:
+  - В `topics`: `topic_profile_json`, `is_active`, `topic_embedding` (VECTOR(1536))
+  - Таблица `heading_clusters` для хранения кластеров заголовков
+  - Таблица `topic_mapping_runs` для отслеживания запусков маппинга топиков
+- **Миграция 0015 (mapping_debug_json)**: добавлено поле `mapping_debug_json` в `cluster_assignments` для хранения debug-информации о маппинге
+- **Миграция 0016 (topic indexes)**: добавлены индексы и ограничения для topics и cluster_assignments, обновление `topic_mapping_runs` с `pipeline_version` и `pipeline_config_hash`
+- **Миграция 0017 (rename section tables)**: переименование таблиц OUTPUT sections из `section_*` в `target_section_*`:
+  - `section_contracts` → `target_section_contracts`
+  - `section_maps` → `target_section_maps`
+  - `generated_sections` → `generated_target_sections`
+- **Миграция 0018 (topic doc_type profiles)**: добавлена поддержка doc_type профилей и zone priors:
+  - В `topics`: `applicable_to_json` — список doc_type, к которым применим топик
+  - Таблица `topic_zone_priors` для хранения приоритетов зон по doc_type для топиков
+- **Миграция 0019 (zone sets and crosswalk)**: добавлены таблицы для кросс-документного связывания:
+  - `zone_sets`: doc_type → список zone_key
+  - `zone_crosswalk`: маппинг между зонами разных doc_types с весами
 
 **Facts (кроме SoA):**
 - `FactExtractionService.extract_and_upsert(...)` реализован как **rules-first** извлечение (без LLM):
@@ -182,7 +274,7 @@
 **Generation:**
 - `GenerationService.generate_section(...)` реализован как MVP-каркас:
   - создаёт `GenerationRun`,
-  - строит контекст детерминированно из `section_maps` (через `LeanContextBuilder`),
+  - строит контекст детерминированно из `target_section_maps` (через `LeanContextBuilder`),
   - формирует черновой `content_text` (без LLM),
   - формирует `artifacts` (claims + citations),
   - вызывает `ValidationService` (QC),
@@ -214,7 +306,7 @@
    - Настроить `SECURE_MODE=true`, `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`; убедиться, что `SectionContract.retrieval_recipe_json` v2 соответствует документному языку (RU/EN/MIXED).  
    - Файлы: `backend/app/core/config.py`, `backend/app/services/section_mapping_assist.py`, `backend/app/services/llm_client.py`, `contracts/seed/*.json`
 3) **Довести retrieval/impact до рабочего контура**:
-   - Реализовать `RetrievalService` (embed query + pgvector search), затем переключить generation на retrieval вместо чистого `section_maps`/anchors.  
+   - Реализовать `RetrievalService` (embed query + pgvector search), затем переключить generation на retrieval вместо чистого `target_section_maps`/anchors.  
    - Реализовать `ImpactService.compute_impact(...)` для вычисления воздействия изменений документов на основе diff и dependency graph.  
    - Расширить `FactExtractionService` для извлечения дополнительных фактов по контрактам (сейчас только 3 базовых: protocol_version, amendment_date, planned_n_total).  
    - Файлы: `backend/app/services/retrieval.py`, `backend/app/services/impact.py`, `backend/app/services/generation.py`, `backend/app/services/fact_extraction.py`, `backend/app/services/lean_passport.py`

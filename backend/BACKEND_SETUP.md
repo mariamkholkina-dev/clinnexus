@@ -35,6 +35,8 @@ backend/app/
 │   ├── ingestion.py      # IngestionService
 │   ├── soa_extraction.py # SoAExtractionService
 │   ├── section_mapping.py # SectionMappingService
+│   ├── section_mapping_assist.py # LLM-assisted mapping
+│   ├── section_mapping_qc.py # QC gate для mapping
 │   ├── fact_extraction.py # FactExtractionService
 │   ├── retrieval.py      # RetrievalService
 │   ├── generation.py     # GenerationService, ValidationService
@@ -133,12 +135,21 @@ make backend-run
 - `GET /api/v1/impact?study_id={study_id}` - Список элементов воздействия
 - `GET /api/v1/tasks?study_id={study_id}` - Список задач
 
+### Passport Tuning
+- `GET /api/v1/passport-tuning/clusters` - Список кластеров заголовков (с пагинацией и поиском)
+- `GET /api/v1/passport-tuning/mapping` - Получить текущий mapping (cluster_to_section_key.json)
+- `POST /api/v1/passport-tuning/mapping` - Сохранить mapping (с валидацией и нормализацией через taxonomy)
+- `GET /api/v1/passport-tuning/mapping/download` - Скачать mapping файл
+- `GET /api/v1/passport-tuning/mapping/for_autotune` - Получить mapping для автотюнинга
+- `GET /api/v1/passport-tuning/sections?doc_type=...` - Получить дерево taxonomy для doc_type
+
 ## Особенности реализации
 
 ### 1. Семантические секции
 - `section_key` (например `protocol.soa`) - семантический идентификатор, не зависит от структуры документа
 - `section_contract` хранит требования секции (facts, источники, qc, citation_policy)
 - `section_map` привязывает `section_key` к `anchor_ids`/`chunk_ids` для конкретного `doc_version_id`
+- Структура документов определяется через templates и target_section_contracts (таблицы taxonomy удалены в миграции 0020)
 - **НЕ хранится** `section_path` внутри `section_contract`
 - **НЕ генерируются** чанки "по section_key" вместо структуры документа
 

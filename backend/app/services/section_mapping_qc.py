@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger
 from app.db.enums import AnchorContentType, DocumentLanguage
 from app.db.models.anchors import Anchor
-from app.db.models.sections import SectionContract, SectionMap
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import DocumentVersion
 from app.services.section_mapping import DocumentOutline, SectionMappingService
 from app.services.text_normalization import normalize_for_match, normalize_for_regex
@@ -53,10 +53,10 @@ class SectionMappingQCGate:
         doc_version_id: UUID,
         section_key: str,
         heading_anchor_id: str,
-        contract: SectionContract,
+        contract: TargetSectionContract,
         all_anchors: list[Anchor],
         outline: DocumentOutline,
-        existing_maps: dict[str, SectionMap],
+        existing_maps: dict[str, TargetSectionMap],
         document_language: DocumentLanguage | None = None,
     ) -> QCResult:
         """
@@ -66,7 +66,7 @@ class SectionMappingQCGate:
             doc_version_id: ID версии документа
             section_key: Ключ секции
             heading_anchor_id: ID кандидата заголовка
-            contract: SectionContract
+            contract: TargetSectionContract
             all_anchors: Все anchors документа
             outline: Структура документа
             existing_maps: Существующие маппинги (для проверки конфликтов)

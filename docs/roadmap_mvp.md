@@ -50,14 +50,14 @@
   - слева: документ (viewer) / список заголовков
   - справа: выбранный `section_key` + кнопки “Assign selected anchors”
 - API:
-  - list section_maps
+  - list target_section_maps (переименовано из `section_maps` в миграции 0017)
   - override mapping (`mapped_by=user`, `status=overridden`)
 - Минимальный автосаппорт:
   - candidates по ключевым словам из паспорта (optional)
 
 **Acceptance**
 - можно замаппить 5–10 секций протокола за 5–10 минут
-- section_maps сохраняются и используются дальше
+- target_section_maps сохраняются и используются дальше
 
 ---
 
@@ -128,7 +128,7 @@ Pipeline:
 - Diff на уровне:
   - anchors added/removed/changed
   - факты changed
-  - section_maps coverage changed
+  - target_section_maps coverage changed
 - Создать:
   - `impact_items[]` с recommended_action
   - `tasks[]` (review_impact, regenerate_section, resolve_conflict)

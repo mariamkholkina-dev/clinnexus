@@ -26,6 +26,7 @@ class QCErrorSchema(BaseModel):
     type: str
     message: str
     anchor_ids: list[str] | None = None
+    details: dict[str, Any] | None = None  # Дополнительные детали ошибки
 
 
 class QCReportSchema(BaseModel):
@@ -48,6 +49,13 @@ class ArtifactsSchema(BaseModel):
     # MVP (v2): структурированные утверждения и ссылки (per-claim).
     claim_items: list["ClaimArtifact"] = Field(default_factory=list)
     citation_items: list["CitationArtifact"] = Field(default_factory=list)
+
+    # Core facts tracking
+    core_facts_used: bool = Field(default=False, description="Использовались ли core facts при генерации")
+    detected_conflicts: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Обнаруженные конфликты между core facts и источниками",
+    )
 
 
 class GenerateSectionResult(BaseModel):

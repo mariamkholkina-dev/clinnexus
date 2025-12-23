@@ -61,7 +61,7 @@ INSERT INTO document_versions (id, document_id, version_label, source_file_uri, 
 -- ============================================================================
 
 -- Пример section_contract для protocol.soa
-INSERT INTO section_contracts (id, workspace_id, doc_type, section_key, title,
+INSERT INTO target_section_contracts (id, workspace_id, doc_type, target_section, title,
                                 required_facts_json, allowed_sources_json, 
                                 retrieval_recipe_json, qc_ruleset_json, 
                                 citation_policy, version, is_active, created_at) VALUES
@@ -98,7 +98,7 @@ INSERT INTO section_contracts (id, workspace_id, doc_type, section_key, title,
  NOW());
 
 -- Пример section_map для конкретного doc_version_id
-INSERT INTO section_maps (id, doc_version_id, section_key,
+INSERT INTO target_section_maps (id, doc_version_id, target_section,
                           anchor_ids, chunk_ids,
                           confidence, status, mapped_by, notes, created_at) VALUES
 ('cc0e8400-e29b-41d4-a716-446655440007',

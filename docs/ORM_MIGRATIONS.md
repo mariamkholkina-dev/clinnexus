@@ -104,6 +104,54 @@ docker-compose up --build
 Основные миграции находятся в:
 
 - `backend/alembic/versions/`
+  - `0001_initial_prod_skeleton.py` - Все таблицы + базовые индексы
+  - `0002_enums_and_vector.py` - ENUM статусы + pgvector + индексы
+  - `0003_make_document_version_file_fields_nullable.py` - source_file_uri и source_sha256 nullable
+  - `0004_add_document_language.py` - document_language enum и поле в document_versions
+  - `0005_unique_fact_evidence.py` - Уникальный индекс на fact_evidence
+  - `0006_add_section_taxonomy.py` - Таблицы section taxonomy (nodes, aliases, related)
+  - `0007_rename_section_key_to_target_section.py` - Переименование section_key → target_section, добавление view_key, source_zone, language
+  - `0008_add_topics_tables.py` - Таблицы topics, cluster_assignments, topic_evidence
+  - `0009_add_anchor_matches.py` - Таблица anchor_matches для выравнивания якорей между версиями
+  - `0010_add_study_core_facts.py` - Таблица study_core_facts для структурированных основных фактов исследования
+  - `0011_add_fact_metadata_fields.py` - Добавление полей метаданных в таблицу facts (confidence, extractor_version, meta_json)
+  - `0012_add_source_zone_enum_and_standardize_sections.py` - Стандартизация 12 основных секций:
+    - Создание ENUM `source_zone` с 12 каноническими ключами + "unknown"
+    - Обновление `anchors.source_zone` и `chunks.source_zone` на ENUM
+    - Маппинг старых значений на канонические
+    - Добавление индексов `(doc_version_id, source_zone)` для быстрого поиска
+  - `0013_add_ingestion_runs.py` - Добавление таблицы `ingestion_runs` для отслеживания запусков ингестии:
+    - Таблица с метриками, качеством и предупреждениями
+    - Добавление `last_ingestion_run_id` в `document_versions`
+    - Индексы для быстрого поиска
+  - `0014_extend_topics_production_quality.py` - Расширение поддержки topics для production-качества:
+    - В `topics`: `topic_profile_json` (JSONB), `is_active` (BOOLEAN), `topic_embedding` (VECTOR(1536))
+    - Таблица `heading_clusters` для хранения кластеров заголовков
+    - Таблица `topic_mapping_runs` для отслеживания запусков маппинга топиков
+    - Индексы для оптимизации запросов
+  - `0015_add_mapping_debug_json_to_cluster_assignments.py` - Добавление поля `mapping_debug_json` в `cluster_assignments` для хранения debug-информации о маппинге
+  - `0016_add_topic_indexes_and_constraints.py` - Добавление недостающих индексов и ограничений:
+    - Составной индекс на `(workspace_id, is_active)` в `topics`
+    - Индекс на `doc_version_id` в `cluster_assignments`
+    - Check constraint для `mapped_by` в `cluster_assignments`
+    - Обновление `topic_mapping_runs` с `pipeline_version` и `pipeline_config_hash`
+  - `0017_rename_section_tables_to_target_section.py` - Переименование таблиц OUTPUT sections:
+    - `section_contracts` → `target_section_contracts`
+    - `section_maps` → `target_section_maps`
+    - `section_taxonomy_nodes` → `target_section_taxonomy_nodes`
+    - `section_taxonomy_aliases` → `target_section_taxonomy_aliases`
+    - `section_taxonomy_related` → `target_section_taxonomy_related`
+    - `generated_sections` → `generated_target_sections`
+  - `0018_add_topic_doc_type_profiles_and_priors.py` - Добавление поддержки doc_type профилей и zone priors:
+    - В `topics`: `applicable_to_json` (JSONB) - список doc_type, к которым применим топик
+    - Таблица `topic_zone_priors` для хранения приоритетов зон по doc_type для топиков
+  - `0019_add_zone_sets_and_crosswalk.py` - Добавление таблиц для кросс-документного связывания:
+    - Таблица `zone_sets`: doc_type → список zone_key
+    - Таблица `zone_crosswalk`: маппинг между зонами разных doc_types с весами
+  - `0020_drop_target_section_taxonomy_tables.py` - Удаление таблиц taxonomy:
+    - Удаляет таблицы `target_section_taxonomy_nodes`, `target_section_taxonomy_aliases`, `target_section_taxonomy_related`
+    - Также удаляет legacy таблицы `section_taxonomy_*` если они еще существуют
+    - Структура документов теперь определяется через templates и `target_section_contracts`
 
 В `backend/DATABASE_SETUP.md` есть доп. контекст по структуре таблиц, enum и pgvector.
 

@@ -14,9 +14,6 @@ migrate:
 seed:
 	docker-compose run --rm backend python -m app.scripts.seed
 
-.PHONY: seed-taxonomy
-seed-taxonomy:
-	docker-compose run --rm backend python -m app.scripts.seed_taxonomy
 
 # Production команды
 .PHONY: prod-build
@@ -51,13 +48,6 @@ prod-migrate:
 prod-seed:
 	docker compose -f docker-compose.prod.yml run --rm backend python -m app.scripts.seed
 
-.PHONY: prod-seed-taxonomy
-prod-seed-taxonomy:
-	docker compose -f docker-compose.prod.yml run --rm backend python -m app.scripts.seed_taxonomy
-
-.PHONY: prod-seed-taxonomy-clear
-prod-seed-taxonomy-clear:
-	docker compose -f docker-compose.prod.yml run --rm backend python -m app.scripts.seed_taxonomy --clear
 
 .PHONY: prod-clean
 prod-clean:

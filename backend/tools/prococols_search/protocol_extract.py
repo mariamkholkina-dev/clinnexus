@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 INCLUDE_TOKENS = ["protocol", "протокол"]
-EXCLUDE_TOKENS = ["ведомость", "проверочн", "лист", "clarification", "letter"]
+EXCLUDE_TOKENS = ["ведомость", "проверочн", "лист", "clarification", "letter", "list"]
 ALLOWED_EXTS = {".doc", ".docx"}
 
 

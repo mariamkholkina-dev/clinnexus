@@ -1,0 +1,27 @@
+# Определение наборов зон для каждого типа документа
+# Каждый doc_type имеет свой набор разрешённых source_zones
+
+protocol:
+  - overview
+  - design
+  - ip
+  - statistics
+  - safety
+  - endpoints
+  - population
+  - procedures
+  - data_management
+  - ethics
+  - admin
+  - appendix
+
+csr:
+  - overview
+  - design
+  - statistics
+  - safety
+  - population
+  - admin
+  - appendix
+  # CSR может иметь дополнительные зоны в будущем
+

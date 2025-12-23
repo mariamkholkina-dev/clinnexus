@@ -62,7 +62,7 @@
 
 ## Промпт 3 — Генератор черновиков паспортов из кластеров (signals-only)
 
-**Цель:** получить черновики `section_contracts` (mapping.signals + базовые qc).
+**Цель:** получить черновики `target_section_contracts` (mapping.signals + базовые qc). (Таблица переименована из `section_contracts` в миграции 0017)
 
 **Prompt:**
 
@@ -192,7 +192,7 @@
 > Вход:
 >
 > * workspace_id
-> * вытащи section_maps со статусом `overridden` (и/или user_confirmed=true, если есть)
+> * вытащи target_section_maps со статусом `overridden` (и/или user_confirmed=true, если есть) (таблица переименована из `section_maps` в миграции 0017)
 > * текущие contracts из DB
 >
 > Выход:

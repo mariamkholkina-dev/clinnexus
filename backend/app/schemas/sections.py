@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.enums import (
     CitationPolicy,
@@ -12,6 +12,11 @@ from app.db.enums import (
     DocumentType,
     SectionMapMappedBy,
     SectionMapStatus,
+)
+from app.core.section_standardization import (
+    CANONICAL_SECTION_KEYS,
+    get_prefer_source_zones,
+    is_valid_target_section,
 )
 
 
@@ -71,6 +76,7 @@ class RetrievalLanguageMVP(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     mode: str = "auto"  # auto|ru|en
+    prefer_language: str | None = None  # ru|en|auto (приоритет языка для извлечения)
 
 
 class ContextBuildMVP(BaseModel):
@@ -99,6 +105,8 @@ class RetrievalRecipeMVP(BaseModel):
     language: RetrievalLanguageMVP = Field(default_factory=RetrievalLanguageMVP)
     context_build: ContextBuildMVP = Field(default_factory=ContextBuildMVP)
     prefer_content_types: list[str] | None = None
+    prefer_source_zones: list[str] | None = None  # Приоритетные source_zone для извлечения evidence
+    fallback_source_zones: list[str] | None = None  # Резервные source_zone, если prefer пуст
     fallback_search: FallbackSearchMVP | None = None
     security: SecurityMVP = Field(default_factory=SecurityMVP)
 
@@ -120,6 +128,16 @@ class QCRulesetMVP(BaseModel):
     gate_policy: GatePolicyMVP = Field(default_factory=GatePolicyMVP)
     warnings: list[dict[str, Any]] = Field(default_factory=list)
     numbers_match_facts: bool = False
+    check_zone_conflicts: bool = False  # Проверка конфликтов фактов из разных source_zone
+
+
+class ViewTopicsConfig(BaseModel):
+    """Конфигурация required_topics для view_key."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    view_key: str
+    required_topics: list[str] = Field(default_factory=list)  # Жёсткий список топиков для view
 
 
 class SectionContractCreate(BaseModel):
@@ -129,6 +147,8 @@ class SectionContractCreate(BaseModel):
     doc_type: DocumentType
     section_key: str
     title: str
+    view_key: str | None = None  # Ключ view для ограничения топиков
+    view_topics_config: list[ViewTopicsConfig] | None = None  # Конфигурация required_topics по view_key
     required_facts_json: RequiredFactsMVP = Field(default_factory=RequiredFactsMVP)
     allowed_sources_json: AllowedSourcesMVP = Field(default_factory=AllowedSourcesMVP)
     retrieval_recipe_json: RetrievalRecipeMVP = Field(default_factory=RetrievalRecipeMVP)
@@ -136,6 +156,25 @@ class SectionContractCreate(BaseModel):
     citation_policy: CitationPolicy
     version: int = 2
     is_active: bool = True
+    
+    @field_validator("section_key")
+    @classmethod
+    def validate_section_key(cls, v: str) -> str:
+        """Валидирует section_key (target_section) на соответствие 12 каноническим ключам."""
+        if not is_valid_target_section(v):
+            raise ValueError(
+                f"section_key должен быть одним из 12 канонических ключей: {CANONICAL_SECTION_KEYS}, "
+                f"получено: {v}"
+            )
+        return v
+    
+    def model_post_init(self, __context: Any) -> None:
+        """После инициализации обновляет prefer_source_zones в retrieval_recipe_json, если они не заданы."""
+        if self.retrieval_recipe_json and not self.retrieval_recipe_json.prefer_source_zones:
+            prefer_zones = get_prefer_source_zones(self.section_key)
+            if prefer_zones["prefer"]:
+                self.retrieval_recipe_json.prefer_source_zones = prefer_zones["prefer"]
+                self.retrieval_recipe_json.fallback_source_zones = prefer_zones.get("fallback", [])
 
 
 class SectionContractOut(BaseModel):

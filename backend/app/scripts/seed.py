@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.db.models.auth import User, Workspace
 from app.db.models.studies import Study
 from app.db.models.generation import Template
-from app.db.models.sections import SectionContract
+from app.db.models.sections import TargetSectionContract
 from app.db.enums import (
     DocumentType,
     StudyStatus,
@@ -73,10 +73,10 @@ async def seed_db() -> None:
 
         # 5. Создаём section_contracts для протокола (MVP набор)
         contracts = [
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.synopsis",
+                target_section="protocol.synopsis",
                 title="Synopsis",
                 required_facts_json={},
                 allowed_sources_json={
@@ -110,10 +110,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.objectives",
+                target_section="protocol.objectives",
                 title="Objectives",
                 required_facts_json={
                     "primary_objective": {"type": "string"},
@@ -151,10 +151,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.study_design",
+                target_section="protocol.study_design",
                 title="Study Design",
                 required_facts_json={
                     "design_type": {"type": "string"},
@@ -191,10 +191,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.soa",
+                target_section="protocol.soa",
                 title="Schedule of Activities",
                 required_facts_json={
                     "visits": ["visit_id", "name", "day"],
@@ -231,10 +231,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.eligibility.inclusion",
+                target_section="protocol.eligibility.inclusion",
                 title="Inclusion Criteria",
                 required_facts_json={
                     "criteria": {"type": "array"},
@@ -270,10 +270,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.eligibility.exclusion",
+                target_section="protocol.eligibility.exclusion",
                 title="Exclusion Criteria",
                 required_facts_json={
                     "criteria": {"type": "array"},
@@ -309,10 +309,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.treatments.dosing",
+                target_section="protocol.treatments.dosing",
                 title="Treatments and Dosing",
                 required_facts_json={
                     "treatments": {"type": "array"},
@@ -349,10 +349,10 @@ async def seed_db() -> None:
                 version=1,
                 is_active=True,
             ),
-            SectionContract(
+            TargetSectionContract(
                 workspace_id=workspace.id,
                 doc_type=DocumentType.PROTOCOL,
-                section_key="protocol.safety.ae_reporting",
+                target_section="protocol.safety.ae_reporting",
                 title="Safety - Adverse Event Reporting",
                 required_facts_json={
                     "ae_reporting": {"type": "string"},

@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     passport_tuning_clusters_path: str = "app/data/passport_tuning/clusters.json"
     passport_tuning_mapping_path: str = "app/data/passport_tuning/cluster_to_section_key.json"
 
+    # Topic Mapping: использовать ли кластеризацию заголовков как prior
+    # Если False, маппинг выполняется напрямую по блокам без кластеризации
+    topic_mapping_use_clustering: bool = True
+
     @property
     def sync_database_url(self) -> str:
         return (

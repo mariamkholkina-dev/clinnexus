@@ -71,7 +71,8 @@ class GenerationRun(Base):
         DocumentTypeType(),
         nullable=False,
     )
-    section_key: Mapped[str] = mapped_column(Text, nullable=False)
+    target_section: Mapped[str] = mapped_column(Text, nullable=False)
+    view_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     template_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("templates.id", ondelete="RESTRICT"),
@@ -79,7 +80,7 @@ class GenerationRun(Base):
     )
     contract_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("section_contracts.id", ondelete="RESTRICT"),
+        ForeignKey("target_section_contracts.id", ondelete="RESTRICT"),
         nullable=False,
     )
     input_snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -100,10 +101,32 @@ class GenerationRun(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    
+    @property
+    def section_key(self) -> str:
+        """Обратная совместимость: section_key → target_section (deprecated)."""
+        import warnings
+        warnings.warn(
+            "Использование section_key устарело. Используйте target_section.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.target_section
+    
+    @section_key.setter
+    def section_key(self, value: str) -> None:
+        """Обратная совместимость: section_key → target_section (deprecated)."""
+        import warnings
+        warnings.warn(
+            "Использование section_key устарело. Используйте target_section.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self.target_section = value
 
 
-class GeneratedSection(Base):
-    __tablename__ = "generated_sections"
+class GeneratedTargetSection(Base):
+    __tablename__ = "generated_target_sections"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

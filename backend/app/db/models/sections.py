@@ -17,6 +17,7 @@ from app.db.enums import (
     SectionMapStatus,
 )
 from app.db.models.studies import DocumentTypeType
+from app.core.section_standardization import validate_target_section
 
 
 class CitationPolicyType(TypeDecorator):
@@ -106,19 +107,19 @@ class SectionMapMappedByType(TypeDecorator):
         return SectionMapMappedBy(value)
 
 
-class SectionContract(Base):
+class TargetSectionContract(Base):
     """
     Паспорт / контракт семантической секции (UNIVERSAL).
 
-    - section_key: стабильный семантический ключ (например 'protocol.soa').
+    - target_section: стабильный семантический ключ (например 'protocol.soa').
       Он НЕ зависит от конкретной структуры документа.
     - doc_type: тип документа, для которого применяется контракт.
 
-    Конкретная привязка к структуре и якорям хранится в `SectionMap` и опирается
-    на section_key, а не на section_path.
+    Конкретная привязка к структуре и якорям хранится в `TargetSectionMap` и опирается
+    на target_section, а не на section_path.
     """
 
-    __tablename__ = "section_contracts"
+    __tablename__ = "target_section_contracts"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -132,7 +133,12 @@ class SectionContract(Base):
         DocumentTypeType(),
         nullable=False,
     )
-    section_key: Mapped[str] = mapped_column(Text, nullable=False)
+    target_section: Mapped[str] = mapped_column(
+        Text, 
+        nullable=False,
+        # Валидация через CHECK constraint будет добавлена в миграции
+    )
+    view_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     required_facts_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     allowed_sources_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -149,20 +155,54 @@ class SectionContract(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Инициализация с валидацией target_section."""
+        super().__init__(*args, **kwargs)
+        # Валидация при создании объекта
+        if hasattr(self, 'target_section') and self.target_section:
+            try:
+                validate_target_section(self.target_section)
+            except ValueError:
+                # В production можно логировать предупреждение, но не блокировать
+                # для обратной совместимости со старыми данными
+                pass
+    
+    @property
+    def section_key(self) -> str:
+        """Обратная совместимость: section_key → target_section (deprecated)."""
+        import warnings
+        warnings.warn(
+            "Использование section_key устарело. Используйте target_section.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.target_section
+    
+    @section_key.setter
+    def section_key(self, value: str) -> None:
+        """Обратная совместимость: section_key → target_section (deprecated)."""
+        import warnings
+        warnings.warn(
+            "Использование section_key устарело. Используйте target_section.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self.target_section = value
 
 
-class SectionMap(Base):
+class TargetSectionMap(Base):
     """
-    Маппинг семантической секции (section_key) на конкретную версию документа.
+    Маппинг семантической секции (target_section) на конкретную версию документа.
 
     ВАЖНО:
-    - section_key — главный идентификатор семантической секции.
+    - target_section — главный идентификатор семантической секции.
     - section_path здесь НЕ используется как ключ и может храниться только
       в notes/metadata (при необходимости), чтобы не связывать семантику
       напрямую с текущей структурой документа.
     """
 
-    __tablename__ = "section_maps"
+    __tablename__ = "target_section_maps"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -172,7 +212,7 @@ class SectionMap(Base):
         ForeignKey("document_versions.id", ondelete="CASCADE"),
         nullable=False,
     )
-    section_key: Mapped[str] = mapped_column(Text, nullable=False)
+    target_section: Mapped[str] = mapped_column(Text, nullable=False)
     anchor_ids: Mapped[list[str] | None] = mapped_column(
         ARRAY(Text), nullable=True
     )  # массив строк anchor_id
@@ -192,5 +232,27 @@ class SectionMap(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    
+    @property
+    def section_key(self) -> str:
+        """Обратная совместимость: section_key → target_section (deprecated)."""
+        import warnings
+        warnings.warn(
+            "Использование section_key устарело. Используйте target_section.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.target_section
+    
+    @section_key.setter
+    def section_key(self, value: str) -> None:
+        """Обратная совместимость: section_key → target_section (deprecated)."""
+        import warnings
+        warnings.warn(
+            "Использование section_key устарело. Используйте target_section.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self.target_section = value
 
 
