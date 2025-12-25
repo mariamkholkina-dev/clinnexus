@@ -26,33 +26,35 @@
 - **Где используется**: `anchors.source_zone`, `chunks.source_zone`
 - **Тип**: ENUM `source_zone` (12 ключей + "unknown")
 - **Назначение**: классификация контента по источнику в исходном документе
-- **Определение**: автоматически через `SourceZoneClassifier` на основе `section_path`, `heading_text` и `language`
-- **Правила**: загружаются из `backend/app/data/source_zone_rules.yaml`
+- **Определение**: автоматически через `SourceZoneClassifier` на основе `doc_type`, `section_path`, `heading_text` и `language`
+- **Правила**: загружаются из `backend/app/data/source_zones/rules_{doc_type}.yaml` (зависит от типа документа)
 
 ### Target Section
 - **Где используется**: `target_section_contracts.target_section`, `target_section_maps.target_section`, `generation_runs.target_section` (таблицы `target_section_contracts` и `target_section_maps` переименованы из `section_contracts` и `section_maps` в миграции 0017)
 - **Тип**: TEXT с валидацией на 12 канонических ключей (без "unknown")
 - **Назначение**: целевая секция для генерации контента
-- **Валидация**: проверка в моделях (`SectionContract`) и схемах (`SectionContractCreate`)
+- **Валидация**: проверка в моделях (`TargetSectionContract`) и схемах (`SectionContractCreate`)
 
 ## SourceZoneClassifier
 
 Классификатор `SourceZoneClassifier` определяет `source_zone` для каждого anchor на основе:
 
 - **Входные данные**:
-  - `section_path` — иерархия заголовков (например, "H1/H2/H3")
+  - `doc_type` — тип документа (определяет набор правил и разрешённые зоны)
+  - `section_path` — иерархия заголовков (например, "H1/H2/H3") или список заголовков
   - `heading_text` — текст текущего заголовка (опционально)
   - `language` — язык документа ("ru" или "en", опционально)
 
 - **Выходные данные**:
-  - `zone` — один из 12 канонических ключей или "unknown"
+  - `zone` — один из 12 канонических ключей или "unknown" (нормализуется через ZoneSetRegistry)
   - `confidence` — уверенность классификации (0.0-1.0)
   - `matched_rule_id` — ID правила, которое сработало (для отладки)
 
-- **Правила**: загружаются из `backend/app/data/source_zone_rules.yaml`
+- **Правила**: загружаются из `backend/app/data/source_zones/rules_{doc_type}.yaml`
   - Поддерживаются паттерны для русского и английского языков
   - Приоритет: более специфичные зоны проверяются первыми
   - Confidence вычисляется на основе доли совпавших сегментов и силы совпадения
+  - Зоны нормализуются через `ZoneSetRegistry` для валидации разрешённых зон для данного doc_type
 
 ## Правила Prefer Source Zones
 
@@ -106,13 +108,6 @@
 - **Prefer**: `appendix`
 - **Fallback**: `procedures`, `admin`
 
-## Использование в Retrieval
-
-При поиске релевантных chunks для генерации секции:
-
-1. Сначала ищутся chunks из `prefer_source_zones`
-2. Если недостаточно контента, используются chunks из `fallback_source_zones`
-3. Фильтрация по `source_zone` выполняется через индекс `(doc_version_id, source_zone)`
 
 ## Миграция данных
 
@@ -133,19 +128,28 @@
 
 ## Валидация
 
-- **Модели**: `SectionContract.__init__()` проверяет `target_section` при создании объекта (таблица `target_section_contracts`, переименована из `section_contracts` в миграции 0017)
-- **Схемы**: `SectionContractCreate` имеет валидатор `@field_validator("section_key")`
-- **Автозаполнение**: при создании `SectionContract` через схему, `prefer_source_zones` автоматически заполняются из правил, если не заданы явно
+- **Модели**: `TargetSectionContract.__init__()` проверяет `target_section` при создании объекта (таблица `target_section_contracts`, переименована из `section_contracts` в миграции 0017)
+- **Схемы**: `SectionContractCreate` имеет валидатор `@field_validator("section_key")` для проверки соответствия 12 каноническим ключам
+- **Автозаполнение**: при создании `TargetSectionContract` через схему `SectionContractCreate`, `prefer_source_zones` и `fallback_source_zones` автоматически заполняются из правил `TARGET_SECTION_PREFER_SOURCE_ZONES`, если не заданы явно в `retrieval_recipe_json`
 
 ## Утилиты
 
 Модуль `app/core/section_standardization.py` предоставляет:
 
-- `CANONICAL_SECTION_KEYS` — список 12 канонических ключей
-- `TARGET_SECTION_PREFER_SOURCE_ZONES` — правила prefer/fallback для каждой target_section
-- `is_valid_target_section(value)` — проверка валидности target_section
-- `is_valid_source_zone(value)` — проверка валидности source_zone
-- `get_prefer_source_zones(target_section)` — получение правил для target_section
-- `validate_target_section(value)` — валидация с выбрасыванием ValueError
-- `validate_source_zone(value)` — валидация с выбрасыванием ValueError
+- `CANONICAL_SECTION_KEYS` — список 12 канонических ключей (без "unknown")
+- `TARGET_SECTION_PREFER_SOURCE_ZONES` — словарь правил prefer/fallback для каждой target_section
+  - Формат: `{target_section: {"prefer": [...], "fallback": [...]}}`
+- `is_valid_target_section(value)` — проверка валидности target_section (один из 12 ключей)
+- `is_valid_source_zone(value)` — проверка валидности source_zone (12 ключей + "unknown")
+- `get_prefer_source_zones(target_section)` — получение правил prefer/fallback для target_section
+- `validate_target_section(value)` — валидация с выбрасыванием ValueError при невалидном значении
+- `validate_source_zone(value)` — валидация с выбрасыванием ValueError при невалидном значении
+
+## Использование в Retrieval
+
+При поиске релевантных chunks для генерации секции через `RetrievalService`:
+
+1. Сначала ищутся chunks из `prefer_source_zones` (из `retrieval_recipe_json.prefer_source_zones` или автоматически из `TARGET_SECTION_PREFER_SOURCE_ZONES`)
+2. Если недостаточно контента, используются chunks из `fallback_source_zones` (из `retrieval_recipe_json.fallback_source_zones`)
+3. Фильтрация по `source_zone` выполняется через индекс `(doc_version_id, source_zone)` в таблицах `anchors` и `chunks`
 

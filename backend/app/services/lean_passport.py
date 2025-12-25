@@ -33,7 +33,7 @@ class LeanPassport:
 
 def normalize_passport(
     *,
-    required_facts_json: dict[str, Any] | None,
+    required_facts_json: dict[str, Any] | list[Any] | None,
     allowed_sources_json: dict[str, Any] | None,
     retrieval_recipe_json: dict[str, Any] | None,
     qc_ruleset_json: dict[str, Any] | None,
@@ -41,8 +41,42 @@ def normalize_passport(
     """Приводит произвольные JSON (в т.ч. legacy/overloaded) к MVP форме.
 
     Важно: любые новые поля должны быть optional, а дефолты задаются здесь.
+    
+    Обрабатывает legacy формат, где required_facts_json может содержать:
+    - список строк: ["study.phase", "study.design.type"] -> преобразуется в список объектов
+    - список объектов: [{"fact_key": "study.phase", ...}] -> используется как есть
+    - словарь с ключом "facts": {"facts": [...]} -> используется как есть
     """
-    required_facts = RequiredFactsMVP.model_validate(required_facts_json or {})
+    # Нормализуем required_facts_json: обрабатываем legacy формат (список строк)
+    normalized_required_facts = required_facts_json or {}
+    
+    # Если это список (legacy формат), преобразуем в словарь с ключом "facts"
+    if isinstance(normalized_required_facts, list):
+        # Проверяем, список ли это строк или объектов
+        if normalized_required_facts and isinstance(normalized_required_facts[0], str):
+            # Legacy формат: список строк -> преобразуем в список объектов
+            normalized_required_facts = {
+                "facts": [
+                    {"fact_key": fact_key, "required": True}
+                    for fact_key in normalized_required_facts
+                ]
+            }
+        else:
+            # Список объектов -> оборачиваем в словарь
+            normalized_required_facts = {"facts": normalized_required_facts}
+    elif isinstance(normalized_required_facts, dict) and "facts" in normalized_required_facts:
+        # Если это словарь с ключом "facts", проверяем формат элементов
+        facts_list = normalized_required_facts["facts"]
+        if isinstance(facts_list, list) and facts_list and isinstance(facts_list[0], str):
+            # Legacy формат: {"facts": ["study.phase", ...]} -> преобразуем
+            normalized_required_facts = {
+                "facts": [
+                    {"fact_key": fact_key, "required": True}
+                    for fact_key in facts_list
+                ]
+            }
+    
+    required_facts = RequiredFactsMVP.model_validate(normalized_required_facts)
     allowed_sources = AllowedSourcesMVP.model_validate(allowed_sources_json or {})
     retrieval_recipe = RetrievalRecipeMVP.model_validate(retrieval_recipe_json or {})
     qc_ruleset = QCRulesetMVP.model_validate(qc_ruleset_json or {})

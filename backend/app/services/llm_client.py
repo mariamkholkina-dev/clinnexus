@@ -1,6 +1,7 @@
 """LLM клиент для section mapping assist."""
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -68,10 +69,14 @@ class LLMClient:
         # - для openai_compatible мы сами добавляем "/v1/..." в _call_openai_compatible,
         #   поэтому если пользователь уже указал base_url с "/v1", убираем его, чтобы
         #   не получить "/v1/v1/chat/completions".
+        # - для yandexgpt используем стандартный endpoint, если base_url не указан
         # - в целом избавляемся от завершающего "/".
         self.base_url = self.base_url.rstrip("/")
         if self.provider == LLMProvider.OPENAI_COMPATIBLE and self.base_url.endswith("/v1"):
             self.base_url = self.base_url[: -len("/v1")]
+        elif self.provider == LLMProvider.YANDEXGPT and not self.base_url:
+            # Если base_url не указан для YandexGPT, используем стандартный
+            self.base_url = "https://llm.api.cloud.yandex.net"
 
     async def generate_candidates(
         self,
@@ -125,6 +130,8 @@ class LLMClient:
             response_data = await self._call_openai_compatible(messages, request_id)
         elif self.provider == LLMProvider.LOCAL:
             response_data = await self._call_local(messages, request_id)
+        elif self.provider == LLMProvider.YANDEXGPT:
+            response_data = await self._call_yandexgpt(messages, request_id)
         else:
             raise ValueError(f"Неподдерживаемый провайдер: {self.provider}")
 
@@ -330,4 +337,127 @@ class LLMClient:
             response2 = await client.post(oa_url, headers=oa_headers, json=oa_payload)
             response2.raise_for_status()
             return response2.json()
+
+    async def _call_yandexgpt(
+        self, messages: list[dict[str, str]], request_id: str
+    ) -> dict[str, Any]:
+        """
+        Вызов YandexGPT API через Yandex Cloud.
+        
+        Использует OpenAI-совместимый HTTP API согласно документации:
+        https://yandex.cloud/ru/docs/ai-studio/concepts/openai-compatibility
+        
+        Endpoint: https://llm.api.cloud.yandex.net/v1/chat/completions
+        Формат модели: gpt://{folder-id}/yandexgpt/latest
+        
+        Аутентификация через API ключ в заголовке Authorization.
+        
+        При получении HTTP 502, 503 или 504 выполняет до 3 попыток с экспоненциальной задержкой.
+        """
+        # OpenAI-совместимый endpoint согласно документации Yandex Cloud
+        # https://yandex.cloud/ru/docs/ai-studio/concepts/openai-compatibility
+        if not self.base_url or self.base_url == "https://llm.api.cloud.yandex.net":
+            url = "https://llm.api.cloud.yandex.net/v1/chat/completions"
+        else:
+            # Если указан кастомный base_url, используем его с /v1/chat/completions
+            url = f"{self.base_url.rstrip('/')}/v1/chat/completions"
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        # Формируем modelUri для YandexGPT
+        # Пользователь может указать модель в формате:
+        # - "folder-id/yandexgpt/latest" -> преобразуется в "gpt://folder-id/yandexgpt/latest"
+        # - "gpt://folder-id/yandexgpt/latest" -> используется как есть
+        if self.model.startswith("gpt://"):
+            model_uri = self.model
+        else:
+            model_uri = f"gpt://{self.model}"
+        
+        # OpenAI-совместимый формат запроса согласно документации
+        # https://yandex.cloud/ru/docs/ai-studio/concepts/openai-compatibility
+        payload = {
+            "model": model_uri,  # Формат: gpt://{folder-id}/yandexgpt/latest
+            "messages": messages,  # Стандартный формат OpenAI (role + content)
+            "temperature": self.temperature,
+            "max_tokens": 2000,
+        }
+        
+        # Ретраи для HTTP 502, 503, 504 с экспоненциальной задержкой (1с, 2с, 4с)
+        max_retries = 3
+        retry_delays = [1, 2, 4]  # секунды
+        
+        async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
+            start = time.perf_counter()
+            last_exception = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = await client.post(url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    result = response.json()
+                    
+                    # OpenAI-совместимый API возвращает ответ в стандартном формате OpenAI
+                    # {
+                    #   "choices": [{"message": {"role": "assistant", "content": "..."}}]
+                    # }
+                    if "choices" in result and len(result["choices"]) > 0:
+                        return result
+                    
+                    # Если формат ответа отличается, пытаемся извлечь текст напрямую
+                    logger.warning(
+                        f"[LLM] Неожиданный формат ответа YandexGPT (request_id={request_id}): {result}"
+                    )
+                    # Fallback: пытаемся найти текст в ответе
+                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if not content:
+                        content = str(result)
+                    
+                    return {
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": content,
+                                }
+                            }
+                        ]
+                    }
+                except httpx.ReadTimeout as e:
+                    elapsed = time.perf_counter() - start
+                    logger.error(
+                        f"[LLM] ReadTimeout (request_id={request_id}, url={url!r}, timeout_sec={self.timeout_sec}, "
+                        f"elapsed={elapsed})"
+                    )
+                    raise
+                except httpx.HTTPStatusError as e:
+                    status_code = e.response.status_code if e.response else None
+                    last_exception = e
+                    
+                    # Ретраи только для 502, 503, 504
+                    if status_code in (502, 503, 504) and attempt < max_retries - 1:
+                        delay = retry_delays[attempt]
+                        logger.warning(
+                            f"[LLM] LLM API busy ({status_code}), retrying... (attempt {attempt + 1})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    
+                    # Для других ошибок или если попытки закончились - логируем и пробрасываем
+                    error_body = ""
+                    try:
+                        if e.response is not None:
+                            error_body = e.response.text[:500]
+                    except Exception:
+                        pass
+                    logger.error(
+                        f"[LLM] HTTP ошибка YandexGPT (request_id={request_id}, status={status_code}): {error_body}"
+                    )
+                    raise
+            
+            # Если все попытки исчерпаны, пробрасываем последнее исключение
+            if last_exception:
+                raise last_exception
 

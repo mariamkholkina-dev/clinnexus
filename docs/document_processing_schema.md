@@ -120,6 +120,29 @@
 **Хранение:**
 - Таблица `chunks` — векторный индекс для семантического поиска
 
+### Шаг 2.4.1: Выравнивание якорей с предыдущей версией (Anchor Alignment)
+
+**Сервис:** `AnchorAligner.align()`
+
+**Что происходит:**
+- Поиск предыдущей версии документа по `document_id` и `effective_date` (или `created_at`)
+- Выравнивание якорей текущей версии с якорями предыдущей версии
+- Создание `anchor_matches` — соответствия между якорями разных версий
+- Использование методов: exact match, fuzzy match, embedding similarity, hybrid
+
+**Хранение:**
+- Таблица `anchor_matches`:
+  - `prev_anchor_id` → `curr_anchor_id` (строковые идентификаторы)
+  - `match_type` — exact/fuzzy/embedding/hybrid
+  - `similarity_score` — оценка сходства (для fuzzy/embedding)
+  - `change_type` — unchanged/changed/added/deleted
+
+**Результат:**
+- Метрики выравнивания: количество matched и changed anchors
+- Сохранение в `summary_json.matched_anchors` и `summary_json.changed_anchors`
+
+**Примечание:** Выполняется после создания chunks для обеспечения возможности сравнения версий документов и анализа изменений.
+
 ### Шаг 2.5: Извлечение фактов (Rules-first)
 
 **Сервис:** `FactExtractionService.extract_and_upsert()`
@@ -152,6 +175,22 @@
   - `fact_id` → `anchor_id` (строковый идентификатор)
   - `evidence_role` — primary/supporting
 
+### Шаг 2.5.1: Проверка согласованности фактов (Fact Consistency Check)
+
+**Сервис:** `FactConsistencyService.check_study_consistency()`
+
+**Что проверяется:**
+- Логические несоответствия между фактами исследования
+- Противоречия в значениях фактов одного типа
+- Обнаруженные конфликты сохраняются в таблице `conflicts`
+
+**Результат:**
+- Количество найденных конфликтов
+- Если найдены конфликты, устанавливается флаг `needs_review`
+- Предупреждения добавляются в `warnings_json`
+
+**Примечание:** Выполняется после извлечения фактов для выявления логических несоответствий в данных исследования.
+
 ### Шаг 2.6: Маппинг секций (Section Mapping)
 
 **Сервис:** `SectionMappingService.map_sections()`
@@ -172,21 +211,56 @@
   - `status` — mapped/needs_review/overridden
   - `mapped_by` — system/user
 
-### Шаг 2.7: Topic Mapping (только для протоколов)
+### Шаг 2.6.1: LLM-assist для проблемных секций (опционально)
 
-**Сервисы:** `HeadingClusteringService` и `TopicMappingService`
+**Сервис:** `SectionMappingAssistService.assist()`
 
 **Что происходит:**
-1. **Кластеризация заголовков:**
+- Автоматическая проверка проблемных секций (статус `needs_review` или 0 anchors)
+- Использование LLM для поиска заголовков-кандидатов для проблемных секций
+- Применение найденных кандидатов с валидацией через QC
+- Выполняется только если включен `SECURE_MODE` и настроены LLM API ключи
+
+**Результат:**
+- Обновление `target_section_maps` с найденными кандидатами
+- QC-отчёты для каждой обработанной секции
+- Информация о использовании LLM сохраняется в `summary_json.llm_info`
+
+**Примечание:** Выполняется автоматически после маппинга секций для улучшения качества маппинга проблемных секций. При ошибках процесс не прерывается, ошибки добавляются в warnings.
+
+### Шаг 2.7: Topic Mapping (только для протоколов)
+
+**Сервисы:** `HeadingBlockBuilder`, `TopicMappingService`, `TopicEvidenceBuilder`
+
+**Что происходит:**
+
+1. **Построение heading blocks:**
+   - `HeadingBlockBuilder` строит блоки заголовков из anchors для doc_version
+   - Блок = заголовок (HDR) + контент (P/LI) до следующего заголовка
+   - Генерируется стабильный `heading_block_id` на основе `heading_anchor_id`
+   - Определяется `source_zone` через `SourceZoneClassifier`
+
+2. **Маппинг блоков на топики:**
+   - Прямой маппинг блоков на топики через `TopicMappingService`
+   - Оценка соответствия блока топику включает:
+     - **Heading match** (0.4 веса): точное/нечёткое совпадение заголовков с aliases топика
+     - **Keyword match** (0.3 веса): совпадение ключевых слов из `topic_profile_json`
+     - **Embedding similarity** (0.3 веса): cosine similarity между блоками и топиками
+     - **Source zone prior** (0.3 веса): буст/штраф на основе совпадения source_zone
+     - **Cluster prior** (опционально): приоритет от кластеризации, если включена
+     - **Neighbor bonus**: бонус за соседство с уже замаппленным блоком
+   - Создание `heading_block_topic_assignments` — прямая привязка блоков к топикам
+
+3. **Опциональная кластеризация (если включена):**
    - Группировка похожих заголовков по семантическому сходству
    - Использование embedding для сравнения заголовков
    - Создание кластеров с порогами: `threshold=0.22`, `min_size=3`, `embedding_threshold=0.15`
+   - Кластеризация используется только как prior для маппинга блоков
 
-2. **Маппинг кластеров на топики:**
-   - Автоматическое сопоставление кластеров с топиками из `topics`
-   - Использование confidence threshold (по умолчанию 0.65)
-   - Создание `cluster_assignments` — привязка кластеров к топикам для doc_version
-   - Создание `topic_evidence` — агрегированные доказательства для топиков с anchor_ids, chunk_ids
+4. **Построение topic_evidence:**
+   - `TopicEvidenceBuilder` строит агрегированные доказательства из `heading_block_topic_assignments`
+   - Агрегация по `(topic_key, source_zone, language)`
+   - Сбор `anchor_ids[]` и `chunk_ids[]` для каждого топика
 
 **Хранение:**
 - Таблица `topics` — семантические топики (миграции 0008, 0014, 0018):
@@ -195,17 +269,24 @@
   - `is_active` — активность топика
   - `topic_embedding` — векторное представление топика VECTOR(1536)
   - `applicable_to_json` — список doc_type, к которым применим топик
-- Таблица `heading_clusters` (миграция 0014) — кластеры заголовков:
+- Таблица `heading_block_topic_assignments` (миграция 0021) — прямой маппинг блоков на топики:
+  - `doc_version_id`, `heading_block_id`, `topic_key`, `confidence`
+  - `debug_json` — debug-информация о маппинге (top3 кандидаты, сигналы)
+  - Уникальный индекс на `(doc_version_id, heading_block_id)`
+- Таблица `heading_clusters` (миграция 0014) — кластеры заголовков (опционально):
   - `doc_version_id`, `cluster_id`, `language`
   - `top_titles_json`, `examples_json`, `stats_json`
   - `cluster_embedding` — векторное представление кластера VECTOR(1536)
-- Таблица `cluster_assignments` — привязка кластеров к топикам для doc_version:
+- Таблица `cluster_assignments` — привязка кластеров к топикам для doc_version (опционально):
   - `mapping_debug_json` — debug-информация о маппинге (миграция 0015)
-- Таблица `topic_evidence` — агрегированные доказательства для топиков (anchor_ids[], chunk_ids[], source_zone, language)
+- Таблица `topic_evidence` — агрегированные доказательства для топиков:
+  - `anchor_ids[]`, `chunk_ids[]`, `source_zone`, `language`
+  - `score` — максимальный confidence из assignments
+  - `evidence_json` — метаданные (top_headings, block_ids, blocks_count)
 - Таблица `topic_mapping_runs` (миграция 0014) — отслеживание запусков маппинга топиков
 - Таблица `topic_zone_priors` (миграция 0018) — приоритеты зон по doc_type для топиков
 
-**Примечание:** Topic mapping выполняется только для документов типа `protocol`. При ошибках процесс не прерывается, ошибки добавляются в warnings.
+**Примечание:** Topic mapping выполняется только для документов типа `protocol`. При ошибках процесс не прерывается, ошибки добавляются в warnings. Кластеризация опциональна и используется только как prior для маппинга блоков.
 
 ### Шаг 2.8: Quality Gate и финализация
 
@@ -318,19 +399,21 @@ Anchors (конкретные места в документе)
 6. `anchor_matches` — соответствия между якорями разных версий документа
 7. `facts` — факты исследования (Study KB)
 8. `fact_evidence` — связь фактов с anchors
-9. `study_core_facts` — структурированные основные факты исследования с версионированием
-10. `target_section_maps` — маппинг семантических секций на anchors/chunks (переименовано из `section_maps` в миграции 0017)
-11. `target_section_contracts` — требования к секциям (target_section, view_key, retrieval_recipe, qc_ruleset) (переименовано из `section_contracts` в миграции 0017)
-12. `topics` — семантические топики для группировки контента (расширено в миграциях 0014, 0018)
-16. `heading_clusters` — кластеры заголовков (миграция 0014)
-17. `cluster_assignments` — привязка кластеров к топикам для doc_version (расширено в миграции 0015)
-18. `topic_evidence` — агрегированные доказательства для топиков
-19. `topic_mapping_runs` — отслеживание запусков маппинга топиков (миграция 0014)
-20. `topic_zone_priors` — приоритеты зон по doc_type для топиков (миграция 0018)
-21. `zone_sets` — наборы зон по doc_type (миграция 0019)
-22. `zone_crosswalk` — кросс-документный маппинг зон (миграция 0019)
-23. `generation_runs` — процессы генерации (target_section, view_key)
-24. `generated_target_sections` — результаты генерации (переименовано из `generated_sections` в миграции 0017)
+9. `conflicts` — обнаруженные противоречия между фактами/документами
+10. `study_core_facts` — структурированные основные факты исследования с версионированием
+11. `target_section_maps` — маппинг семантических секций на anchors/chunks (переименовано из `section_maps` в миграции 0017)
+12. `target_section_contracts` — требования к секциям (target_section, view_key, retrieval_recipe, qc_ruleset) (переименовано из `section_contracts` в миграции 0017)
+13. `topics` — семантические топики для группировки контента (расширено в миграциях 0014, 0018)
+14. `heading_clusters` — кластеры заголовков (миграция 0014, опционально)
+15. `cluster_assignments` — привязка кластеров к топикам для doc_version (расширено в миграции 0015, опционально)
+16. `heading_block_topic_assignments` — прямой маппинг блоков заголовков на топики (миграция 0021)
+17. `topic_evidence` — агрегированные доказательства для топиков
+18. `topic_mapping_runs` — отслеживание запусков маппинга топиков (миграция 0014)
+19. `topic_zone_priors` — приоритеты зон по doc_type для топиков (миграция 0018)
+20. `zone_sets` — наборы зон по doc_type (миграция 0019)
+21. `zone_crosswalk` — кросс-документный маппинг зон (миграция 0019)
+22. `generation_runs` — процессы генерации (target_section, view_key)
+23. `generated_target_sections` — результаты генерации (переименовано из `generated_sections` в миграции 0017)
 
 **Связи:**
 - `anchor_id` — глобальный строковый идентификатор якоря (не UUID)
@@ -339,7 +422,8 @@ Anchors (конкретные места в документе)
 - `target_section_map.anchor_ids[]` и `chunk_ids[]` — маппинг секции (chunk_ids — массив UUID chunk.id)
 - `anchor_matches` — соответствия между якорями разных версий (для diff/impact анализа)
 - `topic_evidence.anchor_ids[]` и `chunk_ids[]` — доказательства для топиков
-- `cluster_assignments` — связь кластеров с топиками для doc_version
+- `heading_block_topic_assignments.heading_block_id` — стабильный идентификатор блока заголовка
+- `cluster_assignments` — связь кластеров с топиками для doc_version (опционально)
 - `ingestion_runs` — отслеживание процессов ингестии, связанных с `document_versions`
 
 ---
@@ -353,9 +437,12 @@ Anchors (конкретные места в документе)
 5. **Гибридное извлечение:** rules-first для простых фактов, LLM для сложных (в будущем)
 6. **Метрики и мониторинг:** каждый процесс ингестии отслеживается через `IngestionRun` с метриками и оценкой качества
 7. **Quality Gate:** автоматическая проверка качества ингестии с флагом `needs_review` для проблемных случаев
-8. **Topic Mapping:** автоматическая группировка контента по семантическим топикам (только для протоколов)
+8. **Topic Mapping:** автоматическая группировка контента по семантическим топикам через heading blocks (только для протоколов)
 9. **Стабильность anchor_id:** `anchor_id` не зависит от `section_path` и `ordinal` для устойчивости при изменениях структуры документа
 10. **Структура документов:** определяется через templates и target_section_contracts (таблицы taxonomy удалены в миграции 0020)
+11. **Anchor Alignment:** автоматическое выравнивание якорей между версиями документа для анализа изменений
+12. **Fact Consistency Check:** автоматическая проверка согласованности фактов исследования
+13. **LLM-assist:** опциональное использование LLM для улучшения маппинга проблемных секций
 
 ---
 
@@ -485,8 +572,9 @@ aa0e8400-e29b-41d4-a716-446655440005:fn:3:1:a1b2c3d4e5f6...
 ### 7.2 Topic (топик)
 
 **Что мэпится к topic:**
-- Кластеры заголовков (`HeadingCluster`) мэпятся на топики (`Topic`) через `TopicMappingService`
-- Кластеры создаются из заголовков документа через `HeadingClusteringService` на основе семантического сходства (embedding)
+- Блоки заголовков (`HeadingBlock`) мэпятся напрямую на топики (`Topic`) через `TopicMappingService`
+- Блоки строятся динамически из anchors через `HeadingBlockBuilder`
+- Кластеризация опциональна и используется только как prior для маппинга
 
 **Откуда берутся ключи topic:**
 - `topic_key` — произвольный строковый ключ (не enum), задаётся при создании топика
@@ -497,27 +585,39 @@ aa0e8400-e29b-41d4-a716-446655440005:fn:3:1:a1b2c3d4e5f6...
   - `topic_profile_json` — профиль топика с aliases, keywords, source_zones, dissimilar_zones, embeddings
 
 **Как работает маппинг на топики:**
-1. **Кластеризация заголовков** (для протоколов):
+1. **Построение heading blocks** (`HeadingBlockBuilder.build_blocks_for_doc_version()`):
+   - Группировка anchors: заголовок (HDR) + контент (P/LI) до следующего заголовка
+   - Генерация стабильного `heading_block_id` на основе `heading_anchor_id`
+   - Определение `source_zone` через `SourceZoneClassifier`
+
+2. **Опциональная кластеризация заголовков** (если включена):
    - Группировка похожих заголовков по embedding similarity
    - Пороги: `threshold=0.22`, `min_size=3`, `embedding_threshold=0.15`
    - Создание `HeadingCluster` с `cluster_id`, `top_titles_json`, `examples_json`, `cluster_embedding`
+   - Используется только как prior для маппинга блоков
 
-2. **Маппинг кластеров на топики** (`TopicMappingService.map_topics_for_doc_version()`):
-   - Для каждого кластера вычисляется score против всех активных топиков workspace
+3. **Маппинг блоков на топики** (`TopicMappingService.map_topics_for_doc_version()`):
+   - Для каждого блока вычисляется score против всех активных топиков workspace
    - Score включает:
-     - **Alias match** (0.4 веса): точное/нечёткое совпадение заголовков с aliases топика
+     - **Heading match** (0.4 веса): точное/нечёткое совпадение заголовков с aliases топика
      - **Keyword match** (0.3 веса): совпадение ключевых слов из `topic_profile_json`
-     - **Embedding similarity** (0.3 веса): cosine similarity между `cluster_embedding` и `topic_embedding`
-     - **Source zone prior** (0.3 веса): буст, если `source_zone` кластера совпадает с `source_zones` топика, штраф для `dissimilar_zones`
-   - Создаётся `ClusterAssignment` с `topic_key`, `confidence`, `mapping_debug_json`
-   - Агрегируются доказательства в `TopicEvidence` с `anchor_ids[]`, `chunk_ids[]`, `source_zone`, `language`
+     - **Embedding similarity** (0.3 веса): cosine similarity между блоками и топиками
+     - **Source zone prior** (0.3 веса): буст, если `source_zone` блока совпадает с `source_zones` топика, штраф для `dissimilar_zones`
+     - **Cluster prior** (опционально): приоритет от кластеризации, если включена
+     - **Neighbor bonus**: бонус за соседство с уже замаппленным блоком
+   - Создаётся `HeadingBlockTopicAssignment` с `heading_block_id`, `topic_key`, `confidence`, `debug_json`
+
+4. **Построение topic_evidence** (`TopicEvidenceBuilder.build_evidence_for_doc_version()`):
+   - Агрегация `anchor_ids[]` и `chunk_ids[]` по `(topic_key, source_zone, language)`
+   - Создание `TopicEvidence` с метаданными (top_headings, block_ids, blocks_count)
 
 **Где используется topic:**
-- В таблице `cluster_assignments` — привязка кластеров заголовков к топикам для конкретной версии документа
+- В таблице `heading_block_topic_assignments` — прямая привязка блоков заголовков к топикам для конкретной версии документа
 - В таблице `topic_evidence` — агрегированные доказательства для топиков (anchor_ids, chunk_ids)
+- В таблице `cluster_assignments` — опциональная привязка кластеров к топикам (если кластеризация включена)
 - Для группировки и навигации по контенту документа по семантическим темам
 
-**Примечание:** Topic mapping выполняется только для документов типа `protocol` в рамках шага 2.7 ингестии.
+**Примечание:** Topic mapping выполняется только для документов типа `protocol` в рамках шага 2.7 ингестии. Кластеризация опциональна и используется только как prior для маппинга блоков.
 
 ### 7.3 Section Contracts (контракты секций)
 

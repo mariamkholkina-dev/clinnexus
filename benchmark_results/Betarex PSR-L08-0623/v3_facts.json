@@ -1,0 +1,1455 @@
+[
+  {
+    "id": "5b44ee8f-f695-4138-8205-b0d0d667d5e2",
+    "fact_type": "study",
+    "fact_key": "phase",
+    "value_json": {
+      "value": "I"
+    },
+    "unit": null,
+    "status": "conflicting",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:d33e9b381e9c7e3e",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "fea69bab-a58e-4eff-8175-f6a19fc9cbca",
+    "fact_type": "study",
+    "fact_key": "design.randomized",
+    "value_json": {
+      "value": false
+    },
+    "unit": null,
+    "status": "conflicting",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:ac4a4568cc444423",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "bf17b40a-fb1f-4080-84cc-a287c0e03864",
+    "fact_type": "population",
+    "fact_key": "planned_n_total",
+    "value_json": {
+      "value": 8
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:315fdd4b86a65fd3",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "00eb3a10-97a9-4337-b21e-8439d724ed92",
+    "fact_type": "treatment",
+    "fact_key": "ip_name",
+    "value_json": {
+      "value": "ИП"
+    },
+    "unit": null,
+    "status": "conflicting",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:fda54f4cb8a94570",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "b8737243-93d8-478b-8148-bb705ec40f00",
+    "fact_type": "treatment",
+    "fact_key": "comparator_name",
+    "value_json": {
+      "value": "placebo and apremilast"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:li:c15ffe171cebc0fe",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "fa6ada75-03e1-4373-998c-51c11ad183be",
+    "fact_type": "protocol_meta",
+    "fact_key": "sponsor_name",
+    "value_json": {
+      "value": "о Надлежащей клинической практике Международной конференции по гармонизации"
+    },
+    "unit": null,
+    "status": "conflicting",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:edd21232ce478445",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "304011d2-fc05-4c9a-88a9-34baefc9c733",
+    "fact_type": "endpoints",
+    "fact_key": "primary",
+    "value_json": {
+      "value": "доля пациентов, достигших улучшения на 75% или более по индексу площади и тяжести псориаза (PASI 75) на 12-й неделе"
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T08:41:52.437758Z",
+    "updated_at": "2025-12-24T11:41:37.983315Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:edc76326924546a7",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:8b33caeebd173d41",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:435a60eb76f57f37",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:p:c43dff049b312213",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "df0340fb-0031-491a-8309-d8a8eea8a5c4",
+    "fact_type": "soa",
+    "fact_key": "visits",
+    "value_json": {
+      "visits": [
+        {
+          "day": null,
+          "label": "День",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:984e1792ca6e7f71"
+        },
+        {
+          "day": null,
+          "label": "Окно визита",
+          "visit_id": "V2",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d8185895b1e039ed"
+        },
+        {
+          "day": null,
+          "label": "Информированное согласие",
+          "visit_id": "V3",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:9b23cc34c5741692"
+        },
+        {
+          "day": null,
+          "label": "Присвоение индивидуального регистрационного номера",
+          "visit_id": "V4",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f8b530165d3964d1"
+        },
+        {
+          "day": null,
+          "label": "Выдача карточки добровольца",
+          "visit_id": "V5",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:94baf566fa8a3005"
+        },
+        {
+          "day": null,
+          "label": "Сбор демографических данных и анамнеза",
+          "visit_id": "V6",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:8bbd4d7031a7a3f9"
+        },
+        {
+          "day": null,
+          "label": "Физикальный осмотр",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:835cdaa7534f2016"
+        },
+        {
+          "day": null,
+          "label": "Рост 1, масса тела, ИМТ",
+          "visit_id": "V8",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:512ad14bf6e37b89"
+        },
+        {
+          "day": null,
+          "label": "Оценка жизненных показателей",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e7051bef480f384c"
+        },
+        {
+          "day": null,
+          "label": "ЭКГ в 12 отведениях",
+          "visit_id": "V10",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:c4ccde76aa26c46b"
+        },
+        {
+          "day": null,
+          "label": "Лабораторные исследования:",
+          "visit_id": "V11",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:10376ff8f8ebe01a"
+        },
+        {
+          "day": null,
+          "label": "- Серологический анализ крови (ВИЧ, гепатит В и С, сифилис)",
+          "visit_id": "V12",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:8996e9bcc6ce3f68"
+        },
+        {
+          "day": null,
+          "label": "- Тест на содержание наркотических веществ и сильнодействующих лекарственных средств3",
+          "visit_id": "V13",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:897f49a4b5197c5b"
+        },
+        {
+          "day": null,
+          "label": "- Тест на алкоголь в выдыхаемом воздухе 4",
+          "visit_id": "V14",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:03fe40b11fcca774"
+        },
+        {
+          "day": null,
+          "label": "- Тест мочи на котинин 5",
+          "visit_id": "V15",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:dfcd0bf9ecf230c0"
+        },
+        {
+          "day": null,
+          "label": "- Тест на беременность 6",
+          "visit_id": "V16",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:07ae70bef46be8e5"
+        },
+        {
+          "day": null,
+          "label": "- Общий анализ крови",
+          "visit_id": "V17",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b6f599205b35513c"
+        },
+        {
+          "day": null,
+          "label": "- Биохимический анализ крови",
+          "visit_id": "V18",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:9b25de8fadfde90a"
+        },
+        {
+          "day": null,
+          "label": "- Фармакокинетика 7",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bb3c0a68881f70b8"
+        },
+        {
+          "day": null,
+          "label": "- Фармакодинамика (IFNγ стимулированный ex vivo) 8",
+          "visit_id": "V20",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:12587648f2d33064"
+        },
+        {
+          "day": null,
+          "label": "- Общий анализ мочи",
+          "visit_id": "V21",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:40c6115dd5eed7ce"
+        },
+        {
+          "day": null,
+          "label": "Оценка критериев включения/ невключения",
+          "visit_id": "V22",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:98429d3e29245e8e"
+        },
+        {
+          "day": null,
+          "label": "Рандомизация",
+          "visit_id": "V23",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d26f258e1a0e33ee"
+        },
+        {
+          "day": null,
+          "label": "Госпитализация 9",
+          "visit_id": "V24",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a0843165c504a957"
+        },
+        {
+          "day": null,
+          "label": "Прием ИП в исследовательском центре",
+          "visit_id": "V25",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:207646f87affb7a5"
+        },
+        {
+          "day": null,
+          "label": "Регистрация сопутствующей терапии и НЯ",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a167ca1a0e6a11f6"
+        }
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T11:41:13.206409Z",
+    "updated_at": "2025-12-24T11:41:13.206409Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:984e1792ca6e7f71",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d8185895b1e039ed",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:9b23cc34c5741692",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f8b530165d3964d1",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:94baf566fa8a3005",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:8bbd4d7031a7a3f9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:835cdaa7534f2016",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:512ad14bf6e37b89",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e7051bef480f384c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:c4ccde76aa26c46b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:10376ff8f8ebe01a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:8996e9bcc6ce3f68",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:897f49a4b5197c5b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:03fe40b11fcca774",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:dfcd0bf9ecf230c0",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:07ae70bef46be8e5",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b6f599205b35513c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:9b25de8fadfde90a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bb3c0a68881f70b8",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:12587648f2d33064",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:40c6115dd5eed7ce",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:98429d3e29245e8e",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d26f258e1a0e33ee",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a0843165c504a957",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:207646f87affb7a5",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a167ca1a0e6a11f6",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "7646e82f-3f8b-49bf-ba2d-3dfb9e02d6e7",
+    "fact_type": "soa",
+    "fact_key": "procedures",
+    "value_json": {
+      "procedures": [
+        {
+          "label": "Скрининг",
+          "proc_id": "P001",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:95a53f0132534748"
+        },
+        {
+          "label": "Скрининг",
+          "proc_id": "P002",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:670c2112618a5167"
+        },
+        {
+          "label": "Исследуемая терапия",
+          "proc_id": "P003",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:398382181959bc92"
+        },
+        {
+          "label": "Исследуемая терапия",
+          "proc_id": "P004",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:6695c93af70a0c01"
+        },
+        {
+          "label": "Исследуемая терапия",
+          "proc_id": "P005",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:29504d699302a316"
+        },
+        {
+          "label": "Исследуемая терапия",
+          "proc_id": "P006",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0a5d59dcb604781f"
+        },
+        {
+          "label": "Наблюдение",
+          "proc_id": "P007",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f7412c5ccc596d1a"
+        },
+        {
+          "label": "Наблюдение",
+          "proc_id": "P008",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:280dc3e2ab0e1028"
+        },
+        {
+          "label": "Д/З",
+          "proc_id": "P009",
+          "category": null,
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:1365e9dc8ad1a883"
+        }
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T11:41:13.206409Z",
+    "updated_at": "2025-12-24T11:41:13.206409Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:95a53f0132534748",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:670c2112618a5167",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:398382181959bc92",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:6695c93af70a0c01",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:29504d699302a316",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0a5d59dcb604781f",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f7412c5ccc596d1a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:280dc3e2ab0e1028",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:1365e9dc8ad1a883",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  },
+  {
+    "id": "3390c0a8-cae5-455d-8bea-ea92c28dbf77",
+    "fact_type": "soa",
+    "fact_key": "matrix",
+    "value_json": {
+      "matrix": [
+        {
+          "value": "Д-14",
+          "proc_id": "P001",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:222d17f856e0b71c"
+        },
+        {
+          "value": "День -14 -1",
+          "proc_id": "P001",
+          "visit_id": "V2",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:2c953a1e73f1f358"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V3",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:cf0d8ada0256e7f1"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V4",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f4f7eee1d7c36242"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V6",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ffea21f1dd578a44"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a06290108d583671"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V8",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b19b7d51ca77124a"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b90c1fe803ce480c"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V10",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:af4208286b70d7dd"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V12",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f86ee91863edfe5d"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V13",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:8a3ec921972961d0"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V14",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b7a00a89a3fc61cf"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V15",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:fc06abab5b881f6f"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V16",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:106f086876e015e9"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V17",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:953f840001436870"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V18",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f088fcff1fafbec5"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V21",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:76bfe3689787b8a0"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V22",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:75e33fe0753188be"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P001",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:62aaa5ba1725b48e"
+        },
+        {
+          "value": "Д-1",
+          "proc_id": "P002",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0e5c02a0bbdb53d6"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e1e4f395aab1f92c"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7ebb2d7a7357d5f4"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V13",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a49664131868c1c2"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V14",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:dc881b3a719db571"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V15",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ab7bf6b0237db9ad"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V16",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:45e278123ac4b29d"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V22",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:039b33bcffd91b3a"
+        },
+        {
+          "value": "Х (вечер)",
+          "proc_id": "P002",
+          "visit_id": "V24",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:fc0147a282be17de"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P002",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d3453e7d6d026416"
+        },
+        {
+          "value": "Д0",
+          "proc_id": "P003",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7691ae5272ea8793"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V5",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:45a16d9454bc2567"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4703895ef1824597"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:aea59673b0aa8259"
+        },
+        {
+          "value": "Х2",
+          "proc_id": "P003",
+          "visit_id": "V10",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4157c26d594c9882"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V17",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a505b83db8e67362"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V18",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b43b278f254e2c90"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b4db5c37e2062c83"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V20",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:aa667b3da6ddff22"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V21",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:aff4a6ead81bb95d"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V22",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:50945af1903e91c5"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V23",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4bfde602f0b8c249"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V24",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:100d909c9721d52f"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V25",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:902bdc2261027cd1"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P003",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:c517d9be913d7b97"
+        },
+        {
+          "value": "Д1",
+          "proc_id": "P004",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b08923c888d4c0ec"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:99422ae285d5477d"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a9ce83791b172e39"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V10",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f4e6373520313a8b"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V17",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e97f2eb9ef3edffc"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V18",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d2b82d5900e2c950"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bb2ac71a22d5c95d"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V20",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0b526f240874c935"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V21",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7f59460b99e8c2f2"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V24",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ed5ddc793ae1b884"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P004",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:dc8434a501cd3516"
+        },
+        {
+          "value": "Д2",
+          "proc_id": "P005",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7917babc338cdf3b"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P005",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a561fe34ec36c5bb"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P005",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d0640a3d6d6b0df5"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P005",
+          "visit_id": "V20",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:27b6a923b90aa5c9"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P005",
+          "visit_id": "V24",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:96c5b64a325a65dc"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P005",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:fd472ec446aef1c9"
+        },
+        {
+          "value": "Д3",
+          "proc_id": "P006",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:502104a299a92afb"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P006",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:6688b64547667444"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P006",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:617c257d576443f4"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P006",
+          "visit_id": "V20",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:20d5c947edc8b8e3"
+        },
+        {
+          "value": "Х (утро)",
+          "proc_id": "P006",
+          "visit_id": "V24",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e979d1ceb70a7a1a"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P006",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e904f3e7e3d305b7"
+        },
+        {
+          "value": "Д5",
+          "proc_id": "P007",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:991c71dd01f194aa"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P007",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:2db2b300efb97c85"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P007",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:885e59c5a0b58880"
+        },
+        {
+          "value": "Д7",
+          "proc_id": "P008",
+          "visit_id": "V1",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bad5b094f74e00fe"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:42d196d4f4bbdf29"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V8",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0b0fa2d080b17167"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:95d0f5fc0aa9e3ec"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V10",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:3219c04d6850ff8a"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V17",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d95ae4e24b470be8"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V18",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a7232aa548fc8dbd"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e85f6e1bdafe99aa"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V20",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4804f556af1f71c7"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V21",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bf4180386c7e5c8b"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P008",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ea925b219aab5242"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V7",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4555fe009e2d750a"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V8",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a47433852b91f5a0"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V9",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:641369fc7c6b4141"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V10",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:66741cff073b49df"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V17",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:05e6a7143beb4b48"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V18",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:5f39eecd8a3ea196"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V19",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:eb77ad678d57e7c4"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V21",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:05e0f36ad3afa333"
+        },
+        {
+          "value": "Х",
+          "proc_id": "P009",
+          "visit_id": "V26",
+          "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:9222f7a0a6348f31"
+        }
+      ]
+    },
+    "unit": null,
+    "status": "extracted",
+    "created_from_doc_version_id": "b495af83-198f-4640-b634-67bb08eefb97",
+    "created_at": "2025-12-24T11:41:13.206409Z",
+    "updated_at": "2025-12-24T11:41:13.206409Z",
+    "evidence": [
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:222d17f856e0b71c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:2c953a1e73f1f358",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:cf0d8ada0256e7f1",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f4f7eee1d7c36242",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ffea21f1dd578a44",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a06290108d583671",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b19b7d51ca77124a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b90c1fe803ce480c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:af4208286b70d7dd",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f86ee91863edfe5d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:8a3ec921972961d0",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b7a00a89a3fc61cf",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:fc06abab5b881f6f",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:106f086876e015e9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:953f840001436870",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f088fcff1fafbec5",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:76bfe3689787b8a0",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:75e33fe0753188be",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:62aaa5ba1725b48e",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0e5c02a0bbdb53d6",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e1e4f395aab1f92c",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7ebb2d7a7357d5f4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a49664131868c1c2",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:dc881b3a719db571",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ab7bf6b0237db9ad",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:45e278123ac4b29d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:039b33bcffd91b3a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:fc0147a282be17de",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d3453e7d6d026416",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7691ae5272ea8793",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:45a16d9454bc2567",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4703895ef1824597",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:aea59673b0aa8259",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4157c26d594c9882",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a505b83db8e67362",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b43b278f254e2c90",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b4db5c37e2062c83",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:aa667b3da6ddff22",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:aff4a6ead81bb95d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:50945af1903e91c5",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4bfde602f0b8c249",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:100d909c9721d52f",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:902bdc2261027cd1",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:c517d9be913d7b97",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:b08923c888d4c0ec",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:99422ae285d5477d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a9ce83791b172e39",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:f4e6373520313a8b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e97f2eb9ef3edffc",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d2b82d5900e2c950",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bb2ac71a22d5c95d",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0b526f240874c935",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7f59460b99e8c2f2",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ed5ddc793ae1b884",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:dc8434a501cd3516",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:7917babc338cdf3b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a561fe34ec36c5bb",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d0640a3d6d6b0df5",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:27b6a923b90aa5c9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:96c5b64a325a65dc",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:fd472ec446aef1c9",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:502104a299a92afb",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:6688b64547667444",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:617c257d576443f4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:20d5c947edc8b8e3",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e979d1ceb70a7a1a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e904f3e7e3d305b7",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:991c71dd01f194aa",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:2db2b300efb97c85",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:885e59c5a0b58880",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bad5b094f74e00fe",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:42d196d4f4bbdf29",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:0b0fa2d080b17167",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:95d0f5fc0aa9e3ec",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:3219c04d6850ff8a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:d95ae4e24b470be8",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a7232aa548fc8dbd",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:e85f6e1bdafe99aa",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4804f556af1f71c7",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:bf4180386c7e5c8b",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:ea925b219aab5242",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:4555fe009e2d750a",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:a47433852b91f5a0",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:641369fc7c6b4141",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:66741cff073b49df",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:05e6a7143beb4b48",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:5f39eecd8a3ea196",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:eb77ad678d57e7c4",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:05e0f36ad3afa333",
+        "evidence_role": "primary"
+      },
+      {
+        "anchor_id": "b495af83-198f-4640-b634-67bb08eefb97:cell:9222f7a0a6348f31",
+        "evidence_role": "primary"
+      }
+    ],
+    "found_in_preferred_topic": false
+  }
+]

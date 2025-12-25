@@ -47,7 +47,16 @@
 ### Слои backend
 
 - `app/api`: HTTP-контракты (FastAPI), только оркестрация и валидация.
-- `app/services`: доменные сервисы (ingestion, extraction, retrieval, generation, validation, diff, impact, conflict).
+- `app/services`: доменные сервисы:
+  - **Ingestion**: `IngestionService`, `DocxIngestor`, `SoAExtractionService`
+  - **Extraction**: `FactExtractionService`, `ValueNormalizer` (GxP Double Check для сложных значений)
+  - **Mapping**: `SectionMappingService`, `SectionMappingAssistService` (LLM-assisted), `TopicMappingService`
+  - **Retrieval**: `RetrievalService` (pgvector search)
+  - **Generation**: `GenerationService`, `ValidationService` (QC), `LeanContextBuilder`
+  - **Change Management**: `DiffService`, `ImpactService`, `AnchorAligner`
+  - **Conflicts**: `ConflictService`, `FactConflictDetector`
+  - **Topics**: `TopicMappingService`, `TopicEvidenceBuilder`, `HeadingBlockBuilder`, `HeadingClusteringService`
+  - **Repositories**: `TopicRepository`, `ClusterAssignmentRepository`, `ZoneSetRepository`, `ZoneCrosswalkRepository`
 - `app/db`: SQLAlchemy-модели и сессии.
 - `app/schemas`: Pydantic-схемы для JSON-платформы (FactItem, SoAResult, Artifacts, QCReport и др.).
 - `app/core`: настройки, ошибки, кросс-срезы.
@@ -61,8 +70,17 @@
   3. Воркер извлекает текст/структуру, создаёт Anchors, Chunks, обновляет статус `DocumentVersion`.
 
 - **SoA / Facts**
-  1. Воркер строит SoAResult и записывает факты (Study KB Facts) + fact_evidence.
-  2. `GET /studies/{study_id}/facts` читает агрегированное представление.
+  1. `SoAExtractionService` извлекает таблицу SoA из DOCX, создаёт cell anchors и факты типа `soa.*`.
+  2. `FactExtractionService` извлекает факты через rules-first подход (regex-правила из `fact_extraction_rules.py`):
+     - Поддерживает приоритеты правил, предпочтительные source_zones и топики
+     - Создаёт факты со статусом `extracted`, `needs_review` или `validated`
+  3. `ValueNormalizer` выполняет GxP-совместимый двойной контроль (Double Check) для сложных значений:
+     - Автоматически определяет сложные значения (несколько чисел, длинные фразы, вложенные структуры)
+     - Использует LLM для нормализации сложных значений (требует `secure_mode=true`)
+     - Сравнивает результат LLM с regex-результатом
+     - Если совпадают → статус `validated`, если нет → `conflicting`
+  4. Воркер записывает факты (Study KB Facts) + fact_evidence.
+  5. `GET /studies/{study_id}/facts` читает агрегированное представление.
 
 - **Retrieval / Generation**
   1. RetrievalService использует pgvector для поиска релевантных anchors/chunks с фильтрацией по `source_zone`.
@@ -70,8 +88,14 @@
   3. GenerationService формирует `GenerationRun` и `GeneratedSection` (+Artifacts, QCReport).
 
 - **Conflicts / Impact**
-  1. DiffService/ValidationService генерируют ChangeEvents, Conflicts.
-  2. ImpactService проецирует изменения на ImpactItems и Tasks.
+  1. `DiffService` сравнивает версии документов через `AnchorAligner` (exact/fuzzy/embedding/hybrid методы), создаёт `AnchorMatch` и `ChangeEvents`.
+  2. `ImpactService.compute_impact(...)` вычисляет воздействие изменений:
+     - Использует `AnchorMatch` для определения измененных якорей (score < 0.95 считается изменением)
+     - Находит удаленные якоря (отсутствующие в `AnchorMatch`)
+     - Извлекает `anchor_id` из `artifacts_json` сгенерированных секций
+     - Создает `ImpactItem` для каждой затронутой секции с описанием изменений
+     - Автоматически создает `Task` типа `REVIEW_IMPACT` для пользователя
+  3. `ConflictService` и `FactConflictDetector` обнаруживают противоречия между фактами/документами.
 
 - **Passport Tuning / Topics**
   1. API `/api/passport-tuning/*` для работы с кластерами заголовков и их маппингом на секции.

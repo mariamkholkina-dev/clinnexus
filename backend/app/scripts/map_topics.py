@@ -43,7 +43,7 @@ async def map_topics_for_doc_version(
         doc_version_id=doc_version_id,
         mode=mode,
         apply=apply,
-        confidence_threshold=0.65,
+        confidence_threshold=0.55,
     )
 
     # Строим topic_evidence
@@ -62,7 +62,7 @@ async def map_topics_for_doc_version(
     logger.info(f"\nМетрики качества:")
     logger.info(f"  Blocks total: {metrics.blocks_total}")
     logger.info(f"  Blocks mapped: {metrics.blocks_mapped}")
-    logger.info(f"  Mapped rate: {metrics.mapped_rate:.2%} (доля блоков с confidence >= 0.65)")
+    logger.info(f"  Mapped rate: {metrics.mapped_rate:.2%} (доля блоков с confidence >= 0.55)")
     logger.info(f"  Low confidence rate: {metrics.low_confidence_rate:.2%} (доля блоков с низким confidence)")
     logger.info(f"  Clustering enabled: {metrics.clustering_enabled}")
 

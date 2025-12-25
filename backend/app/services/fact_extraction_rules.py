@@ -35,6 +35,8 @@ class ExtractionRule:
     confidence_policy: Callable[[str, re.Match], float]
     priority: int = 100  # По умолчанию средний приоритет
     preferred_source_zones: list[str] | None = None  # Например ["statistics", "endpoints"]
+    required_topics: list[str] | None = None  # Приоритетные топики (target_section), например ["sample_size_justification", "study_population"]
+    preferred_topics: list[str] | None = None  # Предпочтительные мастер-топики для поиска значений
 
 
 @dataclass(frozen=True)
@@ -185,8 +187,9 @@ def parse_date_to_iso(raw: str) -> str | None:
     if m:
         return _iso_from_ymd(int(m.group("y")), int(m.group("m")), int(m.group("d")))
     
-    # "05 March 2021" / "5 Mar 2021" / "5 марта 2021"
-    m = re.match(r"^(?P<d>\d{1,2})\s+(?P<mon>[A-Za-zА-Яа-яёЁ]+)\s+(?P<y>\d{4})$", s)
+    # "05 March 2021" / "5 Mar 2021" / "5 марта 2021" / "12 апреля 2010"
+    # Используем search вместо match, чтобы находить дату в середине текста
+    m = re.search(r"(?P<d>\d{1,2})\s+(?P<mon>[A-Za-zА-Яа-яёЁ]+)\s+(?P<y>\d{4})", s)
     if m:
         mon = _month_to_int(m.group("mon"))
         if mon is not None:
@@ -255,10 +258,91 @@ def confidence_by_match_quality(text: str, match: re.Match) -> float:
 
 def parse_string_value(text: str, match: re.Match) -> dict[str, Any] | None:
     """Парсит строковое значение."""
-    val = match.group(1).strip() if match.lastindex >= 1 else match.group(0).strip()
+    val = match.group(1).strip() if match.lastindex is not None and match.lastindex >= 1 else match.group(0).strip()
     if not val:
         return None
     return {"value": normalize_whitespace(val)}
+
+
+def parse_sponsor_name_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит название спонсора с поддержкой кавычек, исключений и ограничением длины."""
+    val = match.group(1).strip() if match.lastindex is not None and match.lastindex >= 1 else match.group(0).strip()
+    if not val:
+        return None
+    
+    # Убираем кавычки в начале и конце (поддержка "", "", «»)
+    val = re.sub(r'^[""«»]+|[""«»]+$', '', val.strip())
+    
+    normalized_val = normalize_whitespace(val)
+    
+    # ВАЛИДАЦИЯ: значение ОБЯЗАТЕЛЬНО должно начинаться с заглавной буквы (А-Я, A-Z) или кавычки
+    if normalized_val:
+        first_char = normalized_val[0]
+        # Если начинается с маленькой буквы (a-z, а-я) - отбрасываем кандидата
+        if first_char.islower():
+            return None
+        # Проверяем, что это либо заглавная буква, либо кавычка
+        if not (first_char.isupper() or first_char in '""«»'):
+            # Если это не заглавная буква и не кавычка - тоже отбрасываем
+            return None
+    
+    # Список исключений (stop words) для ICH GCP и Хельсинкской декларации
+    stop_phrases = [
+        "ICH GCP", "ICH-GCP", "ICH E6", "ICH-E6",
+        "Good Clinical Practice", "Good clinical practice",
+        "Хельсинкская декларация", "Хельсинкской декларации",
+        "Helsinki Declaration", "Declaration of Helsinki",
+        "clinical trial", "clinical study",
+    ]
+    
+    # Проверяем, содержит ли значение стоп-фразы
+    normalized_lower = normalized_val.lower()
+    for phrase in stop_phrases:
+        if phrase.lower() in normalized_lower:
+            return None  # Пропускаем значение со стоп-фразами
+    
+    # СТОП-СЛОВА: если в тексте есть слова "обязан", "должен", "согласно", "храниться" - это не имя спонсора
+    stop_words = ["обязан", "должен", "согласно", "храниться"]
+    for stop_word in stop_words:
+        if stop_word in normalized_lower:
+            return None  # Это описание процедур, а не имя спонсора
+    
+    # Ограничиваем длину до 80 символов
+    if len(normalized_val) > 80:
+        normalized_val = normalized_val[:80].rstrip()
+    
+    if not normalized_val:
+        return None
+    
+    return {"value": normalized_val}
+
+
+def parse_ip_name_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит название исследуемого препарата с проверкой на общие значения."""
+    val = match.group(1).strip() if match.lastindex is not None and match.lastindex >= 1 else match.group(0).strip()
+    if not val:
+        return None
+    
+    normalized_val = normalize_whitespace(val)
+    
+    # ВАЛИДАЦИЯ: значение ОБЯЗАТЕЛЬНО должно начинаться с заглавной буквы (А-Я, A-Z) или кавычки
+    if normalized_val:
+        first_char = normalized_val[0]
+        # Если начинается с маленькой буквы (a-z, а-я) - отбрасываем кандидата
+        if first_char.islower():
+            return None
+        # Проверяем, что это либо заглавная буква, либо кавычка
+        if not (first_char.isupper() or first_char in '""«»'):
+            # Если это не заглавная буква и не кавычка - тоже отбрасываем
+            return None
+    
+    # Проверяем на общие значения, которые требуют проверки
+    generic_values = ["ИП", "ЛП", "Исследуемый препарат", "препарат", "IP", "Investigational Product", "product", "ЛС"]
+    if normalized_val in generic_values or normalized_val.lower() in [gv.lower() for gv in generic_values]:
+        # Возвращаем None, чтобы не засорять Study KB мусором
+        return None
+    
+    return {"value": normalized_val}
 
 
 def parse_int_value(text: str, match: re.Match) -> dict[str, Any] | None:
@@ -280,12 +364,14 @@ def parse_float_value(text: str, match: re.Match) -> dict[str, Any] | None:
 
 
 def parse_date_value(text: str, match: re.Match) -> dict[str, Any] | None:
-    """Парсит дату."""
+    """Парсит дату и возвращает ISO формат YYYY-MM-DD для корректного сравнения."""
     raw = match.group(1) if match.lastindex >= 1 else match.group(0)
     iso = parse_date_to_iso(raw)
     if iso is None:
         return None
-    return {"value": iso, "raw": raw.strip()}
+    # Возвращаем только ISO формат в value для корректного сравнения
+    # (без raw, чтобы избежать конфликтов при сравнении)
+    return {"value": iso}
 
 
 def parse_range_value(text: str, match: re.Match) -> dict[str, Any] | None:
@@ -304,6 +390,41 @@ def parse_ratio_value(text: str, match: re.Match) -> dict[str, Any] | None:
     if ratio is None:
         return None
     return {"value": ratio, "raw": raw}
+
+
+def parse_ratio_list_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит список соотношений из текста (для сложных протоколов с несколькими когортами)."""
+    # Извлекаем все соотношения из текста
+    ratios = []
+    raw_values = []
+    
+    # Паттерны для поиска всех соотношений в тексте
+    ratio_patterns = [
+        r"(\d+)\s*[:\/]\s*(\d+)",  # 2:1, 2/1
+        r"(\d+)\s+к\s+(\d+)",  # 2 к 1
+        r"(\d+)\s+to\s+(\d+)",  # 2 to 1
+    ]
+    
+    for pattern in ratio_patterns:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            num1 = parse_int(m.group(1))
+            num2 = parse_int(m.group(2))
+            if num1 is not None and num2 is not None and num2 > 0:
+                ratio_str = f"{num1}:{num2}"
+                if ratio_str not in ratios:  # Избегаем дубликатов
+                    ratios.append(ratio_str)
+                    raw_values.append(m.group(0))
+    
+    if not ratios:
+        return None
+    
+    # Если найдено одно соотношение, возвращаем как раньше (для обратной совместимости)
+    if len(ratios) == 1:
+        return {"value": ratios[0], "raw": raw_values[0]}
+    
+    # Если найдено несколько соотношений, возвращаем список
+    # LLM-нормализатор выберет главное (первое или наиболее часто упоминаемое)
+    return {"value": ratios, "raw": ", ".join(raw_values), "all_ratios": ratios}
 
 
 def parse_duration_value(text: str, match: re.Match) -> dict[str, Any] | None:
@@ -349,512 +470,270 @@ def parse_boolean_value(text: str, match: re.Match) -> dict[str, Any] | None:
 
 
 def get_extraction_rules() -> list[ExtractionRule]:
-    """Возвращает список всех правил извлечения фактов."""
-    
     rules: list[ExtractionRule] = []
     
-    # ========================================================================
-    # Protocol Meta
-    # ========================================================================
-    
-    # protocol_meta.protocol_version (уже есть, но обновим)
+    # --- МЕТАДАННЫЕ ПРОТОКОЛА ---
     rules.append(ExtractionRule(
-        fact_type="protocol_meta",
-        fact_key="protocol_version",
+        fact_type="protocol_meta", fact_key="protocol_version",
         patterns_ru=[
-            re.compile(r"\b(?:версия|номер)\s+протокола\b\s*[:#]?\s*([A-Za-z0-9А-Яа-я][A-Za-z0-9А-Яа-я._/\-]{0,64})", re.IGNORECASE),
+            # Основные варианты с разными падежами
+            re.compile(r"\b(?:версия|версии|версией|версию)\s+протокола\b\s*[:#]?\s*([A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\b(?:редакция|редакции|редакцией|редакцию)\s+протокола\b\s*[:#]?\s*([A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\b(?:номер|номера|номером)\s+протокола\b\s*[:#]?\s*([A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\bпротокол\s+(?:версия|версии|версией|версию|номер|номера|номером|ред\.|редакция|редакции|редакцией|редакцию|издание|издания|изданием|поправка|поправки|поправкой)\s*[:#]?\s*([A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\b(?:ред\.|издание|издания|изданием|поправка|поправки|поправкой)\s+протокола\b\s*[:#]?\s*([A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            # Поддержка слова "Издание" отдельно
+            re.compile(r"(?i)издание\s*[:#]?\s*([A-Za-z0-9._\-]{1,20})", re.IGNORECASE),
         ],
-        patterns_en=[
-            re.compile(r"\bprotocol\s*(?:version|no\.?|number)\b\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9._/\-]{0,64})", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_high,
-        priority=200,
-    ))
-    
-    # protocol_meta.protocol_date
-    rules.append(ExtractionRule(
-        fact_type="protocol_meta",
-        fact_key="protocol_date",
-        patterns_ru=[
-            re.compile(r"\bдата\s+протокола\b\s*[:#]?\s*(.+)$", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\bprotocol\s+date\b\s*[:#]?\s*(.+)$", re.IGNORECASE),
-        ],
-        parser=parse_date_value,
-        confidence_policy=confidence_high,
-        priority=200,
-    ))
-    
-    # protocol_meta.amendment_date (уже есть)
-    rules.append(ExtractionRule(
-        fact_type="protocol_meta",
-        fact_key="amendment_date",
-        patterns_ru=[
-            re.compile(r"\b(?:дата\s+(?:внесения\s+изменений|поправки|изменения)|дата\s+амендмента)\b\s*[:#]?\s*(.+)$", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:amendment\s+date|date\s+of\s+amendment)\b\s*[:#]?\s*(.+)$", re.IGNORECASE),
-        ],
-        parser=parse_date_value,
-        confidence_policy=confidence_high,
-        priority=200,
-    ))
-    
-    # protocol_meta.sponsor_name
-    rules.append(ExtractionRule(
-        fact_type="protocol_meta",
-        fact_key="sponsor_name",
-        patterns_ru=[
-            re.compile(r"\bспонсор\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я\s.,\-]{5,100})", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\bsponsor\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z\s.,\-]{5,100})", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-    ))
-    
-    # protocol_meta.cro_name
-    rules.append(ExtractionRule(
-        fact_type="protocol_meta",
-        fact_key="cro_name",
-        patterns_ru=[
-            re.compile(r"\b(?:cro|контрактная\s+исследовательская\s+организация)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я\s.,\-]{5,100})", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:cro|contract\s+research\s+organization)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z\s.,\-]{5,100})", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-    ))
-    
-    # protocol_meta.study_title
-    rules.append(ExtractionRule(
-        fact_type="protocol_meta",
-        fact_key="study_title",
-        patterns_ru=[
-            re.compile(r"\b(?:название\s+исследования|заголовок\s+протокола)\b\s*[:#]?\s*(.+)$", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:study\s+title|protocol\s+title)\b\s*[:#]?\s*(.+)$", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-    ))
-    
-    # ========================================================================
-    # Study Design
-    # ========================================================================
-    
-    # study.phase
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="phase",
-        patterns_ru=[
-            re.compile(r"\bфаза\s+(?:исследования\s+)?([I1-4IV]+(?:[–\-]?[I1-4IV]+[a-z]?)?)", re.IGNORECASE),
-            re.compile(r"\b(?:исследование\s+)?([I1-4IV]+(?:[–\-]?[I1-4IV]+[a-z]?)?)\s+фазы?", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\bphase\s+([I1-4IV]+(?:[–\-]?[I1-4IV]+[a-z]?)?)", re.IGNORECASE),
-            re.compile(r"\b([I1-4IV]+(?:[–\-]?[I1-4IV]+[a-z]?)?)\s+phase", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_high,
-        priority=200,
-        preferred_source_zones=["overview", "design"],
-    ))
-    
-    # study.design.randomized
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="design.randomized",
-        patterns_ru=[
-            re.compile(r"\b(?:рандомизированное|рандомизация)", re.IGNORECASE),
-            re.compile(r"\b(?:не\s+рандомизированное|без\s+рандомизации)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:randomized|randomization)", re.IGNORECASE),
-            re.compile(r"\b(?:non-?randomized|without\s+randomization)", re.IGNORECASE),
-        ],
-        parser=parse_boolean_value,
-        confidence_policy=confidence_high,
-        priority=200,
-        preferred_source_zones=["design"],
-    ))
-    
-    # study.design.blinding
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="design.blinding",
-        patterns_ru=[
-            re.compile(r"\b(?:открытое|open\s*label)", re.IGNORECASE),
-            re.compile(r"\b(?:одинарное\s+ослепление|single\s*blind)", re.IGNORECASE),
-            re.compile(r"\b(?:двойное\s+ослепление|double\s*blind)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:open\s*label|open\s*label)", re.IGNORECASE),
-            re.compile(r"\b(?:single\s*blind|single\s*blind)", re.IGNORECASE),
-            re.compile(r"\b(?:double\s*blind|double\s*blind)", re.IGNORECASE),
-        ],
-        parser=lambda text, m: {"value": _normalize_blinding(text)},
-        confidence_policy=confidence_high,
-        priority=200,
-        preferred_source_zones=["design"],
-    ))
-    
-    # study.design.control_type
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="design.control_type",
-        patterns_ru=[
-            re.compile(r"\b(?:плацебо|placebo)", re.IGNORECASE),
-            re.compile(r"\b(?:активный\s+контроль|active\s+control)", re.IGNORECASE),
-            re.compile(r"\b(?:неконтролируемое|uncontrolled)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\bplacebo", re.IGNORECASE),
-            re.compile(r"\bactive\s+control", re.IGNORECASE),
-            re.compile(r"\buncontrolled", re.IGNORECASE),
-        ],
-        parser=lambda text, m: {"value": _normalize_control_type(text)},
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["design"],
-    ))
-    
-    # study.design.parallel_or_crossover
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="design.parallel_or_crossover",
-        patterns_ru=[
-            re.compile(r"\b(?:параллельное|parallel)", re.IGNORECASE),
-            re.compile(r"\b(?:кроссоверное|crossover)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\bparallel", re.IGNORECASE),
-            re.compile(r"\bcrossover", re.IGNORECASE),
-        ],
-        parser=lambda text, m: {"value": _normalize_parallel_crossover(text)},
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["design"],
-    ))
-    
-    # study.design.multicenter
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="design.multicenter",
-        patterns_ru=[
-            re.compile(r"\b(?:многocentровое|multicenter)", re.IGNORECASE),
-            re.compile(r"\b(?:одноцентровое|single\s*center)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\bmulticenter", re.IGNORECASE),
-            re.compile(r"\bsingle\s*center", re.IGNORECASE),
-        ],
-        parser=parse_boolean_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["design"],
-    ))
-    
-    # study.design.duration_subject
-    rules.append(ExtractionRule(
-        fact_type="study",
-        fact_key="design.duration_subject",
-        patterns_ru=[
-            re.compile(r"\b(?:длительность\s+для\s+субъекта|продолжительность\s+лечения)\b[^0-9]{0,30}(\d+\s+(?:недели?|месяц|дн|год))", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:subject\s+duration|treatment\s+duration)\b[^0-9]{0,30}(\d+\s+(?:weeks?|months?|days?|years?))", re.IGNORECASE),
-        ],
-        parser=parse_duration_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["design"],
-    ))
-    
-    # ========================================================================
-    # Population
-    # ========================================================================
-    
-    # population.planned_n_total (уже есть)
-    rules.append(ExtractionRule(
-        fact_type="population",
-        fact_key="planned_n_total",
-        patterns_ru=[
-            re.compile(r"\b(?:всего\s+n|общее\s+число|планируем(?:ое|ая)\s+число|планируем(?:ый|ая)\s+набор|планируется\s+включить)\b[^0-9]{0,35}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
-            re.compile(r"\bN\s*=\s*(\d{1,7}(?:[ ,]\d{3})*)\b", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:total\s*n|planned\s+enrollment|target\s+enrollment|enrollment)\b[^0-9]{0,25}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
-            re.compile(r"\bN\s*=\s*(\d{1,7}(?:[ ,]\d{3})*)\b", re.IGNORECASE),
-        ],
-        parser=parse_int_value,
-        confidence_policy=confidence_high,
-        priority=200,
-    ))
-    
-    # population.age_min / age_max (обрабатываем отдельно для каждого)
-    rules.append(ExtractionRule(
-        fact_type="population",
-        fact_key="age_min",
-        patterns_ru=[
-            re.compile(r"\b(?:возраст|age)\b[^0-9]{0,30}(?:от\s+)?(\d+)\s*(?:до|–|-)\s*\d+", re.IGNORECASE),
-            re.compile(r"\b(?:возраст|age)\s*[:#]?\s*(\d+)\s*[–\-]\s*\d+", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:age|age\s+range)\b[^0-9]{0,30}(?:from\s+)?(\d+)\s*(?:to|–|-)\s*\d+", re.IGNORECASE),
-            re.compile(r"\b(?:age|age\s+range)\s*[:#]?\s*(\d+)\s*[–\-]\s*\d+", re.IGNORECASE),
-        ],
-        parser=parse_age_min_value,
-        confidence_policy=confidence_high,
-        priority=200,
+        patterns_en=[re.compile(r"\bprotocol\s*(?:version|no\.?|number|edition|ver\.|amendment)\b\s*[:#]?\s*([A-Za-z0-9._/\-]{1,64})", re.IGNORECASE)],
+        parser=parse_string_value, confidence_policy=confidence_high, priority=250,
+        preferred_topics=['admin_ethics', 'overview_objectives']
     ))
 
     rules.append(ExtractionRule(
-        fact_type="population",
-        fact_key="age_max",
+        fact_type="protocol_meta", fact_key="protocol_date",
         patterns_ru=[
-            re.compile(r"\b(?:возраст|age)\b[^0-9]{0,30}(?:от\s+)?\d+\s*(?:до|–|-)\s*(\d+)", re.IGNORECASE),
-            re.compile(r"\b(?:возраст|age)\s*[:#]?\s*\d+\s*[–\-]\s*(\d+)", re.IGNORECASE),
+            # Сначала более специфичные паттерны с ограниченной длиной
+            re.compile(r"\bот\s+(\d{1,2}\.\d{1,2}\.\d{4})\b", re.IGNORECASE),  # "от 10.06.2024"
+            re.compile(r"\bдата\s*[:#]?\s*(\d{1,2}\.\d{1,2}\.\d{4})\b", re.IGNORECASE),  # "Дата: 10.06.2024"
+            re.compile(r"\b(?:от|дата)\s+(\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{4})\b", re.IGNORECASE),  # "от 10 июня 2024" или "12 апреля 2010"
+            # Более общий паттерн, но с ограничением длины (максимум 50 символов)
+            re.compile(r"\b(?:дата|даты|датой)\s+(?:протокола|редакции|утверждения)\b\s*[:#]?\s*([^.\n]{1,50}?)(?:\.|$|\n)", re.IGNORECASE),
         ],
         patterns_en=[
-            re.compile(r"\b(?:age|age\s+range)\b[^0-9]{0,30}(?:from\s+)?\d+\s*(?:to|–|-)\s*(\d+)", re.IGNORECASE),
-            re.compile(r"\b(?:age|age\s+range)\s*[:#]?\s*\d+\s*[–\-]\s*(\d+)", re.IGNORECASE),
+            # Сначала более специфичные паттерны
+            re.compile(r"\b(?:protocol|release|issue)\s+date\s*[:#]?\s*(\d{1,2}[./]\d{1,2}[./]\d{4})\b", re.IGNORECASE),  # "Protocol date: 10/06/2024"
+            re.compile(r"\b(?:protocol|release|issue)\s+date\s*[:#]?\s*(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b", re.IGNORECASE),  # "Protocol date: 12 April 2010"
+            # Более общий паттерн с ограничением длины
+            re.compile(r"\b(?:protocol|release|issue)\s+date\b\s*[:#]?\s*([^.\n]{1,50}?)(?:\.|$|\n)", re.IGNORECASE),
         ],
-        parser=parse_age_max_value,
-        confidence_policy=confidence_high,
-        priority=200,
+        parser=parse_date_value, confidence_policy=confidence_high, priority=200,
+        preferred_topics=['admin_ethics', 'overview_objectives']
     ))
-    
-    # population.sex
+
     rules.append(ExtractionRule(
-        fact_type="population",
-        fact_key="sex",
+        fact_type="protocol_meta", fact_key="sponsor_name",
         patterns_ru=[
-            re.compile(r"\b(?:пол|sex|gender)\b[^:]{0,30}[:#]?\s*(?:все|all|оба|both)", re.IGNORECASE),
-            re.compile(r"\b(?:пол|sex|gender)\b[^:]{0,30}[:#]?\s*(?:мужской|male|мужчины)", re.IGNORECASE),
-            re.compile(r"\b(?:пол|sex|gender)\b[^:]{0,30}[:#]?\s*(?:женский|female|женщины)", re.IGNORECASE),
+            # Паттерн с организационными формами: ООО "...", АО «...» (ограничен до 4-5 слов или до первой запятой/точки, нежадный)
+            re.compile(r"(?i)спонсор\s*[:\-]?\s*(?:ООО|АО|ПАО|ЗАО|ОАО)\s*([A-ZА-Я][A-Za-zА-Яа-я0-9\s.\-]{2,40}?)(?:[,.]|$)", re.IGNORECASE),
+            # Стандартный паттерн: ограничен до 4-5 слов или до первой запятой/точки (нежадный захват)
+            re.compile(r"(?i)спонсор\s*[:\-]?\s*([A-ZА-Я][A-Za-zА-Яа-я0-9\s.\-]{2,40}?)(?:[,.]|$)", re.IGNORECASE),
         ],
         patterns_en=[
-            re.compile(r"\b(?:sex|gender)\b[^:]{0,30}[:#]?\s*(?:all|both)", re.IGNORECASE),
-            re.compile(r"\b(?:sex|gender)\b[^:]{0,30}[:#]?\s*(?:male|men)", re.IGNORECASE),
-            re.compile(r"\b(?:sex|gender)\b[^:]{0,30}[:#]?\s*(?:female|women)", re.IGNORECASE),
+            # Паттерн с организационными формами (ограничен до 4-5 слов или до первой запятой/точки, нежадный)
+            re.compile(r"(?i)sponsor\s*[:\-]?\s*(?:LLC|Inc\.?|Ltd\.?|Corp\.?|Corporation)\s*([A-Z][A-Za-z0-9\s.\-]{2,40}?)(?:[,.]|$)", re.IGNORECASE),
+            # Стандартный паттерн с ограничением (нежадный захват)
+            re.compile(r"(?i)sponsor\s*[:\-]?\s*([A-Z][A-Za-z0-9\s.\-]{2,40}?)(?:[,.]|$)", re.IGNORECASE),
         ],
-        parser=lambda text, m: {"value": _normalize_sex(text)},
-        confidence_policy=confidence_medium,
-        priority=150,
+        parser=parse_sponsor_name_value, confidence_policy=confidence_medium, priority=150,
+        preferred_topics=['admin_ethics']
     ))
-    
-    # population.condition
+
+    # --- ДИЗАЙН ИССЛЕДОВАНИЯ ---
     rules.append(ExtractionRule(
-        fact_type="population",
-        fact_key="condition",
+        fact_type="study", fact_key="phase",
         patterns_ru=[
-            re.compile(r"\b(?:заболевание|состояние|диагноз|condition|disease)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я\s.,\-]{5,200})", re.IGNORECASE),
+            re.compile(r"\bфаза\s+(?:исследования\s+)?([I1-4IV]+(?:[–\-]?[I1-4IV]+)?)\b", re.IGNORECASE),
+            re.compile(r"\b([I1-4IV]+(?:[–\-]?[I1-4IV]+)?)\s+фаза\b", re.IGNORECASE),
+            re.compile(r"\b(?:первой|второй|третьей|четвертой)\s+фазы\b", re.IGNORECASE)
         ],
-        patterns_en=[
-            re.compile(r"\b(?:condition|disease|diagnosis)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z\s.,\-]{5,200})", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_low,
-        priority=100,
+        patterns_en=[re.compile(r"\bphase\s+([I1-4IV]+(?:[–\-]?[I1-4IV]+)?)\b", re.IGNORECASE)],
+        parser=parse_string_value, confidence_policy=confidence_high, priority=200,
+        preferred_topics=['overview_objectives', 'design_plan']
     ))
-    
-    # ========================================================================
-    # Treatment
-    # ========================================================================
-    
-    # treatment.randomization_ratio
+
     rules.append(ExtractionRule(
-        fact_type="treatment",
-        fact_key="randomization_ratio",
-        patterns_ru=[
-            re.compile(r"\b(?:соотношение\s+рандомизации|randomization\s+ratio)\b[^:]{0,30}[:#]?\s*(\d+\s*[:\-/]\s*\d+)", re.IGNORECASE),
-            re.compile(r"\b(\d+\s*[:\-/]\s*\d+)\s*(?:соотношение|ratio)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:randomization\s+ratio)\b[^:]{0,30}[:#]?\s*(\d+\s*[:\-/]\s*\d+)", re.IGNORECASE),
-            re.compile(r"\b(\d+\s*[:\-/]\s*\d+)\s*(?:ratio)", re.IGNORECASE),
-        ],
-        parser=parse_ratio_value,
-        confidence_policy=confidence_high,
-        priority=200,
-        preferred_source_zones=["ip", "design"],
+        fact_type="study", fact_key="design.randomized",
+        patterns_ru=[re.compile(r"\b(?:рандомизированное|рандомизация|с\s+рандомизацией)\b", re.IGNORECASE)],
+        patterns_en=[re.compile(r"\b(?:randomized|randomization)\b", re.IGNORECASE)],
+        parser=parse_boolean_value, confidence_policy=confidence_high, priority=200,
+        preferred_topics=['design_plan', 'overview_objectives']
     ))
-    
-    # treatment.arm_count
+
+    # --- ПОПУЛЯЦИЯ И РАЗМЕР ВЫБОРКИ ---
     rules.append(ExtractionRule(
-        fact_type="treatment",
-        fact_key="arm_count",
+        fact_type="population", fact_key="planned_n_total",
         patterns_ru=[
-            re.compile(r"\b(?:число\s+групп|количество\s+рукавов|number\s+of\s+arms)\b[^0-9]{0,30}(\d+)", re.IGNORECASE),
+            # Базовые паттерны с разными падежами
+            re.compile(r"\b(?:всего\s+n|общее\s+число|величина\s+выборки|объем\s+выборки|набор\s+составит)\b[^0-9]{0,40}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
+            # Новые паттерны с разными вариантами написания
+            re.compile(r"\b(?:количество\s+субъектов|число\s+субъектов|всего\s+субъектов)\b[^0-9]{0,40}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
+            re.compile(r"\b(?:количество\s+пациентов|число\s+пациентов|всего\s+пациентов)\b[^0-9]{0,40}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
+            re.compile(r"\b(?:планируется\s+включить|будет\s+включено|предполагается\s+включить)\b[^0-9]{0,40}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
+            re.compile(r"\bвсего\s+(\d{1,7}(?:[ ,]\d{3})*)\s+(?:добровольцев|пациентов|субъектов|участников)\b", re.IGNORECASE),
+            # Простые паттерны для N
+            re.compile(r"\bN\s*=\s*(\d{1,7})\b", re.IGNORECASE),
+            re.compile(r"\b(?:всего|общее\s+количество|количество)\s+(?:пациентов|субъектов|участников)\b[^0-9]{0,40}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE),
         ],
-        patterns_en=[
-            re.compile(r"\b(?:number\s+of\s+arms|arms?)\b[^0-9]{0,30}(\d+)", re.IGNORECASE),
-        ],
-        parser=parse_int_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["ip", "design"],
+        patterns_en=[re.compile(r"\b(?:total\s+n|sample\s+size|planned\s+enrollment|target\s+number|number\s+of\s+patients|total\s+subjects)\b[^0-9]{0,40}(\d{1,7}(?:[ ,]\d{3})*)", re.IGNORECASE)],
+        parser=parse_int_value, confidence_policy=confidence_high, priority=300,
+        preferred_topics=['stats_sample_size', 'population_eligibility', 'overview_objectives']  # Уже включает overview_objectives для гибкости MVP
     ))
-    
-    # treatment.ip_name
+
     rules.append(ExtractionRule(
-        fact_type="treatment",
-        fact_key="ip_name",
+        fact_type="population", fact_key="age_min",
         patterns_ru=[
-            re.compile(r"\b(?:исследуемый\s+препарат|ip|investigational\s+product)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я0-9\s.,\-]{3,200})", re.IGNORECASE),
+            re.compile(r"\b(?:возраст|age)\b[^0-9]{0,30}(?:от\s+)?(\d+)\s*(?:до|–|-)\s*\d+", re.IGNORECASE),
+            re.compile(r"\bсовершеннолетн(?:ие|ые)\b", re.IGNORECASE) # Parser должен вернуть 18
         ],
-        patterns_en=[
-            re.compile(r"\b(?:investigational\s+product|ip|study\s+drug)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z0-9\s.,\-]{3,200})", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["ip"],
+        patterns_en=[re.compile(r"\b(?:age|age\s+range)\b[^0-9]{0,30}(?:from\s+)?(\d+)\s*(?:to|–|-)\s*\d+", re.IGNORECASE)],
+        parser=lambda t, m: {"value": 18} if "совершеннолетн" in t.lower() else parse_age_min_value(t, m),
+        confidence_policy=confidence_high, priority=200,
+        preferred_topics=['population_eligibility']
     ))
-    
-    # treatment.dose
+
+    # --- ПРЕПАРАТЫ (IP & COMPARATOR) ---
     rules.append(ExtractionRule(
-        fact_type="treatment",
-        fact_key="dose",
+        fact_type="treatment", fact_key="ip_name",
         patterns_ru=[
-            re.compile(r"\b(?:доза|dose)\b[^:]{0,30}[:#]?\s*(\d+(?:[.,]\d+)?)\s*([a-zа-я]{1,20})", re.IGNORECASE),
+            # Ограниченный захват до 4-5 слов или до первой запятой/точки (нежадный), если это не заголовок
+            re.compile(r"\b(?:исследуемый\s+препарат|ип|investigational\s+product)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я0-9\s.\-]{2,50}?)(?:[,.]|$)", re.IGNORECASE),
         ],
         patterns_en=[
-            re.compile(r"\b(?:dose|dosage)\b[^:]{0,30}[:#]?\s*(\d+(?:[.,]\d+)?)\s*([a-z]{1,20})", re.IGNORECASE),
+            # Ограниченный захват до 4-5 слов или до первой запятой/точки (нежадный)
+            re.compile(r"\b(?:investigational\s+product|ip|study\s+drug)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z0-9\s.\-]{2,50}?)(?:[,.]|$)", re.IGNORECASE),
         ],
-        parser=lambda text, m: _parse_dose(text, m),
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["ip"],
+        parser=parse_ip_name_value, confidence_policy=confidence_medium, priority=200,
+        preferred_topics=['ip_management']
     ))
-    
-    # treatment.route
+
     rules.append(ExtractionRule(
-        fact_type="treatment",
-        fact_key="route",
-        patterns_ru=[
-            re.compile(r"\b(?:путь\s+введения|route)\b[^:]{0,30}[:#]?\s*(?:перорально|po|per\s*os)", re.IGNORECASE),
-            re.compile(r"\b(?:путь\s+введения|route)\b[^:]{0,30}[:#]?\s*(?:внутривенно|iv|intravenous)", re.IGNORECASE),
-            re.compile(r"\b(?:путь\s+введения|route)\b[^:]{0,30}[:#]?\s*(?:подкожно|sc|subcutaneous)", re.IGNORECASE),
-            re.compile(r"\b(?:путь\s+введения|route)\b[^:]{0,30}[:#]?\s*(?:внутримышечно|im|intramuscular)", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:route)\b[^:]{0,30}[:#]?\s*(?:po|per\s*os|oral)", re.IGNORECASE),
-            re.compile(r"\b(?:route)\b[^:]{0,30}[:#]?\s*(?:iv|intravenous)", re.IGNORECASE),
-            re.compile(r"\b(?:route)\b[^:]{0,30}[:#]?\s*(?:sc|subcutaneous)", re.IGNORECASE),
-            re.compile(r"\b(?:route)\b[^:]{0,30}[:#]?\s*(?:im|intramuscular)", re.IGNORECASE),
-        ],
-        parser=lambda text, m: {"value": _normalize_route(text)},
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["ip"],
+        fact_type="treatment", fact_key="comparator_name",
+        patterns_ru=[re.compile(r"\b(?:препарат\s+сравнения|активный\s+контроль|плацебо-контроль)\b\s*[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я0-9\s.,\-]{3,100})", re.IGNORECASE)],
+        patterns_en=[re.compile(r"\b(?:comparator|active\s+control|reference\s+drug|placebo)\b\s*[:#]?\s*([A-Z][A-Za-z0-9\s.,\-]{3,100})", re.IGNORECASE)],
+        parser=parse_string_value, confidence_policy=confidence_medium, priority=180,
+        preferred_topics=['ip_management', 'design_plan']
     ))
-    
-    # treatment.frequency
+
+    # Дозировка (Dosage)
     rules.append(ExtractionRule(
-        fact_type="treatment",
-        fact_key="frequency",
+        fact_type="treatment", fact_key="dosage",
         patterns_ru=[
-            re.compile(r"\b(?:частота|frequency)\b[^:]{0,30}[:#]?\s*(?:раз\s+в\s+день|qd|once\s+daily)", re.IGNORECASE),
-            re.compile(r"\b(?:частота|frequency)\b[^:]{0,30}[:#]?\s*(?:дважды\s+в\s+день|bid|twice\s+daily)", re.IGNORECASE),
-            re.compile(r"\b(?:частота|frequency)\b[^:]{0,30}[:#]?\s*(?:еженедельно|weekly)", re.IGNORECASE),
+            re.compile(r"\bв\s+дозе\s+(\d+(?:[.,]\d+)?)\s*(мг|мкг|мл|г|кг)\b", re.IGNORECASE),
+            re.compile(r"\bдоза\s*[:#]?\s*(\d+(?:[.,]\d+)?)\s*(мг|мкг|мл|г|кг)\b", re.IGNORECASE),
+            re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(мг|мкг|мл|г|кг)\s+(?:в\s+дозе|дозировка)\b", re.IGNORECASE),
         ],
         patterns_en=[
-            re.compile(r"\b(?:frequency)\b[^:]{0,30}[:#]?\s*(?:qd|once\s+daily)", re.IGNORECASE),
-            re.compile(r"\b(?:frequency)\b[^:]{0,30}[:#]?\s*(?:bid|twice\s+daily)", re.IGNORECASE),
-            re.compile(r"\b(?:frequency)\b[^:]{0,30}[:#]?\s*(?:weekly)", re.IGNORECASE),
+            re.compile(r"\bdose\s*[:#]?\s*(\d+(?:[.,]\d+)?)\s*(mg|mcg|ml|g|kg)\b", re.IGNORECASE),
+            re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(mg|mcg|ml|g|kg)\s+(?:dose|dosage)\b", re.IGNORECASE),
         ],
-        parser=lambda text, m: {"value": _normalize_frequency(text)},
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["ip"],
+        parser=_parse_dose,
+        confidence_policy=confidence_medium, priority=190,
+        preferred_topics=['ip_management'],
+        preferred_source_zones=['ip']
     ))
-    
-    # ========================================================================
-    # Endpoints (специальная обработка для массивов)
-    # ========================================================================
-    # Endpoints обрабатываются отдельно в основном сервисе, так как требуют
-    # извлечения нескольких элементов из списка после заголовка
-    
-    # ========================================================================
-    # Statistics
-    # ========================================================================
-    
-    # statistics.alpha
+
+    # Путь введения (Route)
     rules.append(ExtractionRule(
-        fact_type="statistics",
-        fact_key="alpha",
+        fact_type="treatment", fact_key="route",
         patterns_ru=[
-            re.compile(r"\b(?:альфа|alpha|уровень\s+значимости)\b[^0-9]{0,30}(?:[:#]?\s*)?(?:=)?\s*(0\.\d{1,4}|\d+\.\d{1,4})", re.IGNORECASE),
+            re.compile(r"\b(?:перорально|внутривенно|подкожно|внутримышечно|пероральный|внутривенный|подкожный|внутримышечный)\b", re.IGNORECASE),
+            re.compile(r"\b(?:путь\s+введения|способ\s+введения)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я\s.,\-]{3,60})", re.IGNORECASE),
         ],
         patterns_en=[
-            re.compile(r"\b(?:alpha|significance\s+level)\b[^0-9]{0,30}(?:[:#]?\s*)?(?:=)?\s*(0\.\d{1,4}|\d+\.\d{1,4})", re.IGNORECASE),
+            re.compile(r"\b(?:oral|intravenous|subcutaneous|intramuscular|po|iv|sc|im)\b", re.IGNORECASE),
+            re.compile(r"\b(?:route\s+of\s+administration|administration\s+route)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z\s.,\-]{3,60})", re.IGNORECASE),
         ],
-        parser=parse_float_value,
-        confidence_policy=confidence_high,
-        priority=200,
-        preferred_source_zones=["statistics"],
+        parser=lambda t, m: {"value": _normalize_route(m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0))},
+        confidence_policy=confidence_medium, priority=190,
+        preferred_topics=['ip_management'],
+        preferred_source_zones=['ip']
     ))
-    
-    # statistics.power
+
+    # Частота приема (Frequency)
     rules.append(ExtractionRule(
-        fact_type="statistics",
-        fact_key="power",
+        fact_type="treatment", fact_key="frequency",
         patterns_ru=[
-            re.compile(r"\b(?:мощность|power|статистическая\s+мощность)\b[^0-9]{0,30}(?:[:#]?\s*)?(?:=)?\s*(\d{1,3})", re.IGNORECASE),
+            re.compile(r"\b(?:раз\s+в\s+день|дважды\s+в\s+день|ежедневно|еженедельно|qd|bid)\b", re.IGNORECASE),
+            re.compile(r"\b(?:частота\s+приема|режим\s+приема)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я\s.,\-]{3,60})", re.IGNORECASE),
         ],
         patterns_en=[
-            re.compile(r"\b(?:power|statistical\s+power)\b[^0-9]{0,30}(?:[:#]?\s*)?(?:=)?\s*(\d{1,3})", re.IGNORECASE),
+            re.compile(r"\b(?:once\s+daily|twice\s+daily|daily|weekly|qd|bid)\b", re.IGNORECASE),
+            re.compile(r"\b(?:frequency|dosing\s+frequency)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z\s.,\-]{3,60})", re.IGNORECASE),
         ],
-        parser=parse_int_value,
-        confidence_policy=confidence_high,
-        priority=200,
-        preferred_source_zones=["statistics"],
+        parser=lambda t, m: {"value": _normalize_frequency(m.group(1) if m.lastindex and m.lastindex >= 1 else m.group(0))},
+        confidence_policy=confidence_medium, priority=190,
+        preferred_topics=['ip_management'],
+        preferred_source_zones=['ip']
     ))
-    
-    # statistics.primary_method
+
+    # --- СТАТИСТИКА ---
     rules.append(ExtractionRule(
-        fact_type="statistics",
-        fact_key="primary_method",
-        patterns_ru=[
-            re.compile(r"\b(?:первичный\s+метод\s+анализа|primary\s+analysis\s+method)\b[^:]{0,50}[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я\s.,\-]{5,200})", re.IGNORECASE),
-        ],
-        patterns_en=[
-            re.compile(r"\b(?:primary\s+analysis\s+method|primary\s+method)\b[^:]{0,50}[:#]?\s*([A-Z][A-Za-z\s.,\-]{5,200})", re.IGNORECASE),
-        ],
-        parser=parse_string_value,
-        confidence_policy=confidence_low,
-        priority=100,
-        preferred_source_zones=["statistics"],
+        fact_type="statistics", fact_key="alpha",
+        patterns_ru=[re.compile(r"\b(?:альфа|alpha|уровень\s+значимости)\b[^0-9]{0,30}(?:[:#]?\s*)?(?:=)?\s*(0\.\d{1,4})", re.IGNORECASE)],
+        patterns_en=[re.compile(r"\b(?:alpha|significance\s+level)\b[^0-9]{0,30}(?:[:#]?\s*)?(?:=)?\s*(0\.\d{1,4})", re.IGNORECASE)],
+        parser=parse_float_value, confidence_policy=confidence_high, priority=200,
+        preferred_topics=['stats_sample_size']
     ))
-    
-    # statistics.interim_analysis
+
+    # 1. Конечные точки (Endpoints)
     rules.append(ExtractionRule(
-        fact_type="statistics",
-        fact_key="interim_analysis",
+        fact_type="endpoints", fact_key="primary",
+        patterns_ru=[re.compile(r"\b(?:первичная|основная)\s+(?:конечная\s+точка|цель|переменная)\b\s*[:#]?\s*([A-ZА-Я][A-Za-zА-Яа-я0-9\s.,\-]{10,500})", re.IGNORECASE)],
+        patterns_en=[re.compile(r"\bprimary\s+(?:endpoint|objective)\b\s*[:#]?\s*([A-Z][A-Za-z0-9\s.,\-]{10,500})", re.IGNORECASE)],
+        parser=parse_string_value, confidence_policy=confidence_medium, priority=200,
+        preferred_topics=['endpoints_efficacy'],
+        preferred_source_zones=['endpoints']
+    ))
+
+    # 2. Тип ослепления (Blinding)
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="design.blinding",
+        patterns_ru=[re.compile(r"\b(?:открытое|слепое|двойное\s+слепое|заслепленное|ослепленное|плацебо-контролируемое)\b", re.IGNORECASE)],
+        patterns_en=[re.compile(r"\b(?:open-label|double-blind|blinded|placebo-controlled)\b", re.IGNORECASE)],
+        parser=lambda t, m: {"value": _normalize_blinding(t)}, 
+        confidence_policy=confidence_high, priority=180,
+        preferred_topics=['design_plan'],
+        preferred_source_zones=['design']
+    ))
+
+    # 3. Тип дизайна (Type: parallel/crossover)
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="design.type",
         patterns_ru=[
-            re.compile(r"\b(?:промежуточный\s+анализ|interim\s+analysis)", re.IGNORECASE),
-            re.compile(r"\b(?:без\s+промежуточного\s+анализа|no\s+interim\s+analysis)", re.IGNORECASE),
+            re.compile(r"\b(?:параллельных\s+группах|параллельное|параллельный\s+дизайн)\b", re.IGNORECASE),
+            re.compile(r"\b(?:перекрестное|кроссовер|перекрестный\s+дизайн)\b", re.IGNORECASE)
         ],
         patterns_en=[
-            re.compile(r"\b(?:interim\s+analysis)", re.IGNORECASE),
-            re.compile(r"\b(?:no\s+interim\s+analysis)", re.IGNORECASE),
+            re.compile(r"\b(?:parallel|parallel\s+group)\b", re.IGNORECASE),
+            re.compile(r"\b(?:crossover|cross-over)\b", re.IGNORECASE)
         ],
-        parser=parse_boolean_value,
-        confidence_policy=confidence_medium,
-        priority=150,
-        preferred_source_zones=["statistics"],
+        parser=lambda t, m: {"value": _normalize_parallel_crossover(t)},
+        confidence_policy=confidence_high, priority=180,
+        preferred_topics=['design_plan'],
+        preferred_source_zones=['design']
     ))
-    
+
+    # 4. Соотношение рандомизации (Randomization Ratio)
+    # Используем parse_ratio_list_value для поддержки нескольких соотношений в сложных протоколах
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="design.randomization_ratio",
+        patterns_ru=[
+            re.compile(r"\b(?:соотношении|соотношение|рандомизированы)\b[^0-9]{0,30}(\d+\s*[:\/]\s*\d+)", re.IGNORECASE),
+            re.compile(r"\b(?:соотношении|соотношение|рандомизированы)\b[^0-9]{0,30}(\d+\s+к\s+\d+)", re.IGNORECASE),
+            re.compile(r"\b(\d+\s*[:\/]\s*\d+)\s*(?:соотношение|ratio)\b", re.IGNORECASE),
+            re.compile(r"\b(\d+\s*:\s*\d+)\b", re.IGNORECASE),  # Просто 1:1, 2:1 и т.д.
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:ratio|randomization\s+ratio)\b[^0-9]{0,30}(\d+\s*[:\/]\s*\d+)", re.IGNORECASE),
+            re.compile(r"\b(\d+\s*[:\/]\s*\d+)\s*(?:ratio|randomization)\b", re.IGNORECASE),
+            re.compile(r"\b(\d+\s*:\s*\d+)\b", re.IGNORECASE),  # Просто 1:1, 2:1 etc.
+        ],
+        parser=parse_ratio_list_value,  # Используем парсер, который извлекает все соотношения
+        confidence_policy=confidence_medium, priority=170,
+        preferred_topics=['design_plan'],
+        preferred_source_zones=['design']
+    ))
+
+    # 5. Длительность исследования
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="duration",
+        patterns_ru=[re.compile(r"\bпродолжительность\s+исследования\b[^0-9]{0,30}(\d+\s+(?:недель|месяцев|дней|лет))", re.IGNORECASE)],
+        patterns_en=[re.compile(r"\bstudy\s+duration\b[^0-9]{0,30}(\d+\s+(?:weeks|months|days|years))", re.IGNORECASE)],
+        parser=parse_duration_value, confidence_policy=confidence_high, priority=150,
+        preferred_topics=['design_plan']
+    ))
+
     return rules
 
 

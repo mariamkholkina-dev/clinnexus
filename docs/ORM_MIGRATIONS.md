@@ -28,15 +28,11 @@
 - В эндпойнтах обычно инжектится `db: AsyncSession = Depends(get_db)`
 - В сервисах сессия передаётся явным параметром (или через конструктор), чтобы слой был тестируемым.
 
-## Миграции: два alembic-конфига
+## Миграции: единый alembic-конфиг
 
-В репозитории есть **две** папки Alembic:
+В репозитории используется единый каталог Alembic:
 
-1) **`backend/alembic` + `backend/alembic.ini`** — основной сценарий для локального запуска из `backend/`.
-
-2) **`db/alembic` + `db/alembic.ini`** — сценарий для запуска миграций в Docker (см. `Makefile`).
-
-Обе схемы миграций используют одну и ту же `Base.metadata`, т.е. фактически описывают одну и ту же БД, но с разными путями запуска/URL хоста БД.
+**`backend/alembic` + `backend/alembic.ini`** — основной каталог для миграций, используется как локально, так и в Docker.
 
 ## Как Alembic “видит” модели (важно для autogenerate)
 
@@ -89,7 +85,7 @@ alembic revision --autogenerate -m "short_message"
 В `Makefile` есть цель:
 
 - `make migrate` → вызывает Alembic внутри контейнера backend:
-  - `alembic -c /app/db/alembic.ini upgrade head`
+  - `alembic -c /app/alembic.ini upgrade head`
 
 Это удобно, когда вы поднимаете всё через:
 

@@ -238,6 +238,9 @@ class SectionMappingAssistService:
                     outline=outline,
                     existing_maps=existing_maps,
                     document_language=doc_version.document_language,
+                    is_from_llm=True,
+                    llm_confidence=candidate.confidence,
+                    is_llm_assist=True,
                 )
                 logger.debug(
                     "[Assist] QC result "
@@ -262,6 +265,9 @@ class SectionMappingAssistService:
                     outline=outline,
                     existing_maps=existing_maps,
                     document_language=doc_version.document_language,
+                    is_from_llm=True,
+                    llm_confidence=first_candidate.confidence,
+                    is_llm_assist=True,
                 )
 
             # Формируем QC отчёт
@@ -380,32 +386,120 @@ class SectionMappingAssistService:
         elif document_language == DocumentLanguage.EN:
             lang_instruction = "\nВАЖНО: Документ на английском языке. Выбирай кандидаты заголовков на английском языке."
         elif document_language == DocumentLanguage.MIXED:
-            lang_instruction = "\nВАЖНО: Документ смешанного языка (RU/EN). Выбирай кандидаты заголовков, соответствующие keywords в нужном языке."
+            lang_instruction = (
+                "\nВАЖНО: Документ смешанного языка (RU/EN). "
+                "Заголовки могут быть двуязычными (например, 'Section 5. Safety / Раздел 5. Безопасность'). "
+                "Выбирай кандидаты заголовков, соответствующие keywords в нужном языке. "
+                "Если заголовок содержит оба языка, это нормально - учитывай оба варианта."
+            )
 
-        return f"""Ты ассистент для маппинга секций документа.{lang_instruction}
+        return f"""Ты ассистент для маппинга секций российских клинических протоколов.{lang_instruction}
 
 Твоя задача: предложить кандидатов заголовков (heading_anchor_id) для каждой секции из списка contracts.
 
-ВАЖНО:
-- Возвращай ТОЛЬКО валидный JSON по схеме ниже
-- НЕ выдумывай anchor_id - используй ТОЛЬКО те, что есть в списке headings
-- Для каждой секции предложи до {max_candidates} кандидатов, отсортированных по confidence (убывание)
-- confidence должен быть от 0.0 до 1.0
-- rationale должен быть коротким (≤200 символов)
-- Учитывай document_language из payload при выборе кандидатов
+## 12 канонических зон клинических протоколов:
 
-Схема ответа:
+1. **overview/synopsis** (protocol.synopsis)
+   - EN: Overview, Synopsis, Summary, General Information
+   - RU: Синопсис, краткое изложение, общая информация
+   - Содержит общее описание исследования, основные характеристики
+
+2. **design** (protocol.study_design)
+   - EN: Design, Study Design, Methodology, Study Plan, Research Plan
+   - RU: Дизайн, схема, методология, план исследования
+   - Описывает тип исследования, рандомизацию, ослепление, структуру
+
+3. **ip** (protocol.ip)
+   - EN: Investigational Product, IP, Drug Product, Placebo, Study Drug
+   - RU: Исследуемый препарат, ИП, характеристика лекарственного средства, плацебо
+   - Информация о препарате, дозировке, способе применения, хранении
+
+4. **statistics** (protocol.statistics)
+   - EN: Statistical Methods, Data Analysis, Sample Size Calculation, Hypotheses
+   - RU: Статистические методы, анализ данных, расчет размера выборки, гипотезы
+   - Статистический план, методы анализа, размер выборки, критерии значимости
+
+5. **safety** (protocol.safety)
+   - EN: Safety, Adverse Events (AE/SAE), Safety Monitoring
+   - RU: Безопасность, регистрация нежелательных явлений (НЯ/СНЯ), мониторинг безопасности
+   - Процедуры регистрации НЯ, критерии серьезности, правила досрочного прекращения
+
+6. **endpoints** (protocol.endpoints)
+   - EN: Endpoints, Efficacy Criteria, Objectives, Primary/Secondary Endpoints
+   - RU: Конечные точки, критерии эффективности, цели и задачи
+   - Первичные и вторичные конечные точки, критерии оценки эффективности
+
+7. **population** (protocol.population)
+   - EN: Population, Inclusion/Exclusion Criteria, Subject Selection
+   - RU: Популяция, критерии включения и исключения, отбор субъектов
+   - Критерии включения/исключения, целевая популяция, демографические характеристики
+
+8. **procedures** (protocol.procedures)
+   - EN: Study Procedures, Visit Description, Schedule of Assessments
+   - RU: Процедуры исследования, описание визитов, график обследований
+   - Последовательность визитов, процедуры на каждом визите, график обследований
+
+9. **data_management** (protocol.data_management)
+   - EN: Data Management, Case Report Forms (CRF), Data Storage
+   - RU: Управление данными, ИРК (индивидуальные регистрационные карты), хранение данных
+   - Процедуры сбора данных, ведение ИРК, правила хранения и передачи данных
+
+10. **ethics** (protocol.ethics)
+    - EN: Ethics, Informed Consent, IEC/IRB, Helsinki Declaration
+    - RU: Этические аспекты, информированное согласие, ЛЭК/МЭК, Хельсинкская декларация
+    - Этические комитеты, процедуры получения согласия, защита прав пациентов
+
+11. **admin** (protocol.admin)
+    - EN: Administration, Monitoring, Audit, Publications, Archive
+    - RU: Администрирование, мониторинг, аудит, публикации, архив
+    - Мониторинг исследования, аудит, публикационная политика, архивное хранение
+
+12. **appendix** (protocol.appendix)
+    - EN: Appendices, Supplements, Forms
+    - RU: Приложения, дополнения, формы
+    - Дополнительные материалы, формы согласия, справочные таблицы
+
+## Логика выбора заголовков:
+
+1. **Двусмысленные заголовки**: Если заголовок звучит двусмысленно (например, "План"), смотри на структуру документа:
+   - В начале документа (первые 20-30% заголовков) → скорее всего 'design' (protocol.study_design)
+   - Ближе к середине документа → скорее всего 'procedures' (protocol.procedures)
+
+2. **Ключевые слова-индикаторы**:
+   - Если заголовок содержит "Критерии" (включения/исключения) → почти всегда 'population' (protocol.population)
+   - Если заголовок содержит "Цели" или "Эффективность" → это 'endpoints' (protocol.endpoints)
+   - Если заголовок содержит "Безопасность", "НЯ", "СНЯ" → это 'safety' (protocol.safety)
+   - Если заголовок содержит "Статистика", "Анализ данных" → это 'statistics' (protocol.statistics)
+
+3. **Учет контекста**: Используй snippet (первые 1-2 параграфа после заголовка) для уточнения содержания.
+
+4. **Смешанные документы**: Если document_language=MIXED, заголовки могут быть двуязычными:
+   - "Section 5. Safety / Раздел 5. Безопасность"
+   - "Study Design / Дизайн исследования"
+   - Учитывай оба варианта при сопоставлении с keywords
+
+## Формат ответа:
+
+Возвращай СТРОГО валидный JSON со следующей структурой:
 {{
   "candidates": {{
     "<section_key>": [
       {{
         "heading_anchor_id": "<string from headings list>",
         "confidence": 0.0-1.0,
-        "rationale": "<short explanation>"
+        "rationale": "<объяснение на русском языке, ≤200 символов>"
       }}
     ]
   }}
-}}"""
+}}
+
+ВАЖНО:
+- НЕ выдумывай anchor_id - используй ТОЛЬКО те, что есть в списке headings
+- Для каждой секции предложи до {max_candidates} кандидатов, отсортированных по confidence (убывание)
+- confidence должен быть от 0.0 до 1.0 (1.0 = идеальное совпадение)
+- rationale должен быть на русском языке и коротким (≤200 символов)
+- Учитывай document_language из payload при выборе кандидатов
+- Если заголовок подходит для нескольких секций, предложи его для всех подходящих с соответствующим confidence"""
 
     async def _apply_mappings(
         self,
@@ -500,6 +594,9 @@ class SectionMappingAssistService:
                 outline=outline,
                 existing_maps=existing_maps,
                 document_language=doc_version_result.document_language if doc_version_result else DocumentLanguage.UNKNOWN,
+                is_from_llm=True,
+                llm_confidence=None,  # В этом месте confidence уже вычислен ранее
+                is_llm_assist=True,
             )
 
             confidence = qc_result.derived_confidence

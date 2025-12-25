@@ -24,6 +24,7 @@ class QCError:
 
     type: str  # "must_keywords", "not_keywords", "regex", "block_size", "conflict"
     message: str
+    severity: str = "error"  # "error" | "warning" | "soft_warning"
 
 
 @dataclass
@@ -58,6 +59,9 @@ class SectionMappingQCGate:
         outline: DocumentOutline,
         existing_maps: dict[str, TargetSectionMap],
         document_language: DocumentLanguage | None = None,
+        is_from_llm: bool = False,
+        llm_confidence: float | None = None,
+        is_llm_assist: bool = False,
     ) -> QCResult:
         """
         Валидирует кандидата заголовка через QC Gate.
@@ -71,6 +75,9 @@ class SectionMappingQCGate:
             outline: Структура документа
             existing_maps: Существующие маппинги (для проверки конфликтов)
             document_language: Язык документа (опционально, если None - берём из doc_version)
+            is_from_llm: Флаг, что маппинг пришёл от LLM/Assist
+            llm_confidence: Уверенность LLM (используется для определения статуса при is_from_llm=True)
+            is_llm_assist: Если True, ошибка must_keywords не приводит к rejected, а снижает confidence и ставит needs_review
 
         Returns:
             QCResult с результатом валидации
@@ -162,18 +169,38 @@ class SectionMappingQCGate:
         combined_text_normalized = normalize_for_match(heading_text + " " + snippet)
 
         # Проверка must keywords (на нормализованном тексте)
-        if signals.must_keywords:
+        # Если is_llm_assist=True и must_keywords отсутствуют (пустой список), добавляем soft_warning
+        if is_llm_assist and (not signals.must_keywords or len(signals.must_keywords) == 0):
+            errors.append(
+                QCError(
+                    type="must_keywords",
+                    message="Отсутствуют must_keywords в контракте (LLM Assist доверяет найденной секции)",
+                    severity="soft_warning",
+                )
+            )
+        elif signals.must_keywords:
             has_must = any(
                 normalize_for_match(kw) in combined_text_normalized
                 for kw in signals.must_keywords
             )
             if not has_must:
-                errors.append(
-                    QCError(
-                        type="must_keywords",
-                        message=f"Не найдены обязательные keywords: {signals.must_keywords}",
+                # Если маппинг от LLM Assist, отсутствие must_keywords - это soft_warning, а не блокирующая ошибка
+                # Логика: "Если LLM нашла секцию, но названия не в списке — мы доверяем, но просим человека подтвердить"
+                if is_llm_assist or is_from_llm:
+                    errors.append(
+                        QCError(
+                            type="must_keywords",
+                            message=f"Не найдены обязательные keywords: {signals.must_keywords}",
+                            severity="soft_warning",
+                        )
                     )
-                )
+                else:
+                    errors.append(
+                        QCError(
+                            type="must_keywords",
+                            message=f"Не найдены обязательные keywords: {signals.must_keywords}",
+                        )
+                    )
 
         # Проверка not keywords (на нормализованном тексте)
         if signals.not_keywords:
@@ -202,7 +229,14 @@ class SectionMappingQCGate:
                     logger.warning(f"Некорректный regex pattern: {pattern}")
 
         # Если есть критические ошибки (must_keywords или not_keywords), отклоняем
-        critical_errors = [e for e in errors if e.type in ("must_keywords", "not_keywords")]
+        # Но если must_keywords пришёл от LLM Assist как soft_warning, не считаем его критическим
+        # Логика: при is_llm_assist=True ошибка must_keywords не должна приводить к rejected
+        critical_errors = [
+            e for e in errors 
+            if e.type in ("must_keywords", "not_keywords") 
+            and e.severity == "error"
+            and not (e.type == "must_keywords" and is_llm_assist)
+        ]
         if critical_errors:
             return QCResult(
                 status="rejected",
@@ -282,27 +316,87 @@ class SectionMappingQCGate:
             confidence -= 0.2
         if any(e.type == "conflict" for e in errors):
             confidence -= 0.1
+        # Если is_llm_assist=True и есть ошибка must_keywords (но не из-за отсутствия списка),
+        # снижаем confidence на 0.1, но не отклоняем маппинг (логика: доверяем LLM, но просим подтвердить)
+        # Если must_keywords просто отсутствуют в контракте, не снижаем confidence
+        if is_llm_assist and any(
+            e.type == "must_keywords" 
+            and e.severity == "soft_warning" 
+            and "Не найдены обязательные keywords" in e.message
+            for e in errors
+        ):
+            confidence -= 0.1
 
         # Применяем confidence cap для mixed/unknown
         if signals.confidence_cap is not None:
             confidence = min(confidence, signals.confidence_cap)
 
+        # Если is_llm_assist=True и отсутствуют must_keywords, гарантируем минимум 0.5
+        # чтобы маппинг сохранился в базе
+        if is_llm_assist and (not signals.must_keywords or len(signals.must_keywords) == 0):
+            confidence = max(0.5, confidence)
+
         confidence = max(0.0, min(1.0, confidence))
 
         # 6. Определяем статус
-        if errors and not any(e.type in ("block_size", "conflict") for e in errors):
-            # Есть некритические ошибки, но не блокирующие
-            status = "needs_review"
-        elif confidence >= 0.75 and not conflict_sections:
-            status = "mapped"
-        elif confidence >= 0.5:
-            status = "needs_review"
+        # Специальная логика для LLM Assist: если is_llm_assist=True и есть ошибка must_keywords (включая отсутствие must_keywords),
+        # то ставим needs_review и сохраняем маппинг (не отклоняем)
+        if is_llm_assist and any(e.type == "must_keywords" and e.severity == "soft_warning" for e in errors):
+            # Если есть только ошибка must_keywords как soft_warning (без других критических ошибок), ставим needs_review
+            # Логика: "Если LLM нашла секцию, но названия не в списке или список пустой — мы доверяем, но просим человека подтвердить"
+            if not any(e.type in ("not_keywords", "block_size", "conflict") and e.severity == "error" for e in errors):
+                status = "needs_review"
+            else:
+                # Есть другие критические ошибки, используем обычную логику
+                if confidence >= 0.75 and not conflict_sections:
+                    status = "mapped"
+                elif confidence >= 0.5:
+                    status = "needs_review"
+                else:
+                    status = "rejected"
+        # Специальная логика для LLM: если маппинг от LLM и отсутствуют must_keywords (но это soft_warning),
+        # то статус зависит от llm_confidence. LLM может находить секции даже если они называются не по списку.
+        elif is_from_llm:
+            has_must_keywords_soft_warning = any(
+                e.type == "must_keywords" and e.severity == "soft_warning" 
+                for e in errors
+            )
+            if has_must_keywords_soft_warning:
+                # Если LLM дала высокую уверенность (> 0.8), верим ей и ставим mapped
+                # Иначе просим проверить (needs_review)
+                # В обоих случаях привязываем якоря (selected_heading_anchor_id)
+                if llm_confidence is not None and llm_confidence > 0.8:
+                    status = "mapped"
+                else:
+                    status = "needs_review"
+            elif errors and not any(e.type in ("block_size", "conflict") for e in errors):
+                # Есть некритические ошибки, но не блокирующие
+                status = "needs_review"
+            elif confidence >= 0.75 and not conflict_sections:
+                status = "mapped"
+            elif confidence >= 0.5:
+                status = "needs_review"
+            else:
+                status = "rejected"
         else:
-            status = "rejected"
+            # Обычная логика для не-LLM маппингов
+            if errors and not any(e.type in ("block_size", "conflict") for e in errors):
+                # Есть некритические ошибки, но не блокирующие
+                status = "needs_review"
+            elif confidence >= 0.75 and not conflict_sections:
+                status = "mapped"
+            elif confidence >= 0.5:
+                status = "needs_review"
+            else:
+                status = "rejected"
+
+        # Привязываем якоря для всех успешных маппингов (mapped или needs_review)
+        # Для LLM маппингов это позволяет находить секции даже если они называются не по списку
+        selected_anchor_id = heading_anchor_id if status != "rejected" else None
 
         return QCResult(
             status=status,
-            selected_heading_anchor_id=heading_anchor_id if status != "rejected" else None,
+            selected_heading_anchor_id=selected_anchor_id,
             errors=errors,
             derived_confidence=confidence,
         )

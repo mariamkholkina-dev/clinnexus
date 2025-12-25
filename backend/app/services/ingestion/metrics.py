@@ -98,6 +98,7 @@ class FactsMetrics:
     by_status: dict[str, int] = field(default_factory=dict)
     missing_required: list[str] = field(default_factory=list)  # список отсутствующих обязательных фактов
     conflicting_count: int = 0  # количество фактов со статусом 'conflicting'
+    validated_count: int = 0  # количество фактов со статусом 'extracted' или 'validated' (confidence >= 0.7)
 
 
 @dataclass
@@ -122,6 +123,15 @@ class SourceZonesMetrics:
 
 
 @dataclass
+class TopicsMetrics:
+    """Метрики по маппингу топиков."""
+    
+    mapped_count: int = 0  # количество успешно замаппленных мастер-топиков (из 15 возможных)
+    mapped_rate: float = 0.0  # процент покрытия (mapped_count / total_topics)
+    total_topics: int = 15  # общее количество мастер-топиков (по умолчанию 15)
+
+
+@dataclass
 class IngestionMetrics:
     """Полные метрики ингестии документа."""
     
@@ -132,6 +142,7 @@ class IngestionMetrics:
     facts: FactsMetrics = field(default_factory=FactsMetrics)
     section_maps: SectionMapsMetrics = field(default_factory=SectionMapsMetrics)
     source_zones: SourceZonesMetrics = field(default_factory=SourceZonesMetrics)
+    topics: TopicsMetrics = field(default_factory=TopicsMetrics)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     
@@ -205,6 +216,12 @@ class IngestionMetrics:
                 "by_status": self.facts.by_status,
                 "missing_required": self.facts.missing_required,
                 "conflicting_count": self.facts.conflicting_count,
+                "validated_count": self.facts.validated_count,
+            },
+            "topics": {
+                "mapped_count": self.topics.mapped_count,
+                "mapped_rate": round(self.topics.mapped_rate, 4),
+                "total_topics": self.topics.total_topics,
             },
             "section_maps": {
                 "expected": self.section_maps.expected,

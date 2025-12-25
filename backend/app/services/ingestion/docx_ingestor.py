@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,10 @@ def get_text_with_context_hash(text_norm: str, section_path: str) -> str:
     Вычисляет SHA256 хеш нормализованного текста с контекстом раздела.
     Используется для создания стабильного anchor_id, инвариантного к перемещению внутри документа.
     
+    ВАЖНО: Хеш вычисляется ТОЛЬКО от (text_norm + section_path).
+    doc_version_id НЕ должен попадать в хеш, чтобы одинаковый текст в разных версиях
+    получал одинаковый хеш для правильной работы AnchorAligner.
+    
     Args:
         text_norm: Нормализованный текст
         section_path: Путь к разделу (используются первые 64 символа)
@@ -75,7 +80,7 @@ def get_text_with_context_hash(text_norm: str, section_path: str) -> str:
     """
     # Используем первые 64 символа section_path для контекста
     context = section_path[:64]
-    # Объединяем текст и контекст для хеширования
+    # Объединяем текст и контекст для хеширования (БЕЗ doc_version_id!)
     combined = f"{text_norm}:{context}"
     full_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
     # Возвращаем первые 16 символов хеша
@@ -210,7 +215,8 @@ class DocxIngestor:
         file_path: str | Path, 
         doc_version_id: UUID, 
         document_language: DocumentLanguage,
-        doc_type: DocumentType
+        doc_type: DocumentType,
+        timeout_seconds: int = 120
     ) -> DocxIngestResult:
         """
         Парсит DOCX документ и создаёт anchors.
@@ -220,19 +226,37 @@ class DocxIngestor:
             doc_version_id: UUID версии документа
             document_language: Язык документа
             doc_type: Тип документа (определяет набор правил классификации source_zone)
+            timeout_seconds: Максимальное время обработки документа в секундах (по умолчанию 120)
             
         Returns:
             DocxIngestResult с anchors, summary и warnings
+            
+        Raises:
+            TimeoutError: Если обработка документа превысила timeout_seconds
         """
+        # Засекаем время начала обработки
+        start_time = time.time()
+        
+        def check_timeout() -> None:
+            """Проверяет, не превышен ли таймаут обработки."""
+            elapsed = time.time() - start_time
+            if elapsed > timeout_seconds:
+                raise TimeoutError(
+                    f"Обработка документа превысила таймаут {timeout_seconds} секунд "
+                    f"(прошло {elapsed:.1f} секунд). Файл: {file_path}"
+                )
+        
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"Файл не найден: {file_path}")
         
         # Загружаем документ
         doc = Document(str(file_path))
+        check_timeout()
         
         # Вычисляем статистику документа для visual fallback
         doc_stats = HeadingDetector.compute_doc_stats(list(doc.paragraphs))
+        check_timeout()
         
         # Первый проход: детект только style/outline/numbering
         detector = HeadingDetector(enable_visual_fallback=False)
@@ -248,6 +272,10 @@ class DocxIngestor:
         
         para_index_for_detection = 0
         for paragraph in doc.paragraphs:
+            # Проверяем таймаут каждые 100 параграфов для оптимизации
+            if para_index_for_detection % 100 == 0:
+                check_timeout()
+            
             para_index_for_detection += 1
             hit = detector.detect(paragraph, para_index=para_index_for_detection)
             paragraph_hits.append((paragraph, hit))
@@ -260,6 +288,7 @@ class DocxIngestor:
         enable_visual = False
         
         if heading_count == 0 or (total_paragraphs > 50 and heading_count < 3):
+            check_timeout()
             enable_visual = True
             detector = HeadingDetector(enable_visual_fallback=True)
             detector.set_doc_stats(doc_stats)
@@ -272,6 +301,10 @@ class DocxIngestor:
             heading_count = 0
             para_index_for_detection = 0
             for paragraph in doc.paragraphs:
+                # Проверяем таймаут каждые 100 параграфов для оптимизации
+                if para_index_for_detection % 100 == 0:
+                    check_timeout()
+                
                 para_index_for_detection += 1
                 hit = detector.detect(paragraph, para_index=para_index_for_detection)
                 paragraph_hits.append((paragraph, hit))
@@ -306,6 +339,10 @@ class DocxIngestor:
         
         # Проходим по всем параграфам документа с hits
         for paragraph, hit in paragraph_hits:
+            # Проверяем таймаут каждые 100 параграфов для оптимизации
+            if para_index % 100 == 0:
+                check_timeout()
+            
             para_index += 1
             
             # Получаем сырой текст
@@ -395,10 +432,12 @@ class DocxIngestor:
             
             # Вычисляем hash текста с контекстом раздела для стабильного anchor_id
             # Используем text_norm + section_path[:64] для различения одинаковых абзацев в разных разделах
+            # ВАЖНО: Хеш вычисляется ТОЛЬКО от (text_norm + section_path), БЕЗ doc_version_id!
             text_hash = get_text_hash(text_norm)
             context_hash = get_text_with_context_hash(text_norm, current_section_path)
             
             # Формируем anchor_id: {doc_version_id}:{content_type}:{hash16}
+            # doc_version_id используется ТОЛЬКО как префикс строки, НЕ попадает в хеш!
             doc_version_id_str = str(doc_version_id)
             base_anchor_id = f"{doc_version_id_str}:{content_type.value}:{context_hash}"
             # Устраняем коллизии в рамках одной версии
@@ -454,6 +493,7 @@ class DocxIngestor:
 
         # Извлекаем footnotes из документа
         # В python-docx footnotes доступны через doc.part.footnotes_part.footnotes
+        check_timeout()
         fn_section_path = "FOOTNOTES"
         footnotes_count = 0
         footnotes_anchors_count = 0
@@ -469,6 +509,10 @@ class DocxIngestor:
                 if footnotes is not None:
                     # Проходим по всем footnotes
                     for fn_idx, footnote in enumerate(footnotes):
+                        # Проверяем таймаут каждые 50 сносок для оптимизации
+                        if fn_idx % 50 == 0:
+                            check_timeout()
+                        
                         footnotes_count += 1
                         
                         # Получаем параграфы внутри footnote
@@ -498,10 +542,12 @@ class DocxIngestor:
                             
                             # Вычисляем hash текста для стабильного anchor_id сносок
                             # Для сносок используем только text_norm (без section_path)
+                            # ВАЖНО: Хеш вычисляется ТОЛЬКО от text_norm, БЕЗ doc_version_id!
                             text_hash = get_text_hash(text_norm)
                             fn_hash_short = text_hash[:16]
                             
                             # Формируем anchor_id для footnotes: {doc_version_id}:fn:{hash16}
+                            # doc_version_id используется ТОЛЬКО как префикс строки, НЕ попадает в хеш!
                             doc_version_id_str = str(doc_version_id)
                             base_anchor_id = f"{doc_version_id_str}:fn:{fn_hash_short}"
                             # Устраняем коллизии в рамках одной версии

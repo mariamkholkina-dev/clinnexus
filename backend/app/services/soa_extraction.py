@@ -136,6 +136,11 @@ class SoAExtractionService:
             "schedule of assessments",
             "schedule of procedures",
             "table of activities",
+            "time and events schedule",
+            "assessment schedule",
+            "flow chart",
+            "time and events table",
+            "study procedures",
             "расписание процедур",
             "график процедур",
             "расписание мероприятий",
@@ -143,6 +148,12 @@ class SoAExtractionService:
             "график проведения",  # Добавляем "график проведения процедур"
             "график проведения процедур",
             "график проведения исследований",
+            "план обследований",
+            "процедуры исследования",
+            "график обследований",
+            "схема визитов",
+            "план визитов",
+            "перечень процедур",
         ]
         # Негативный контекст (приложения/шкалы/анкеты)
         neg = [
@@ -381,7 +392,51 @@ class SoAExtractionService:
             if best_score.score >= 2.0:
                 return best_score
             else:
-                logger.info(f"Score {best_score.score:.1f} ниже порога 2.0, таблица не принята")
+                # Детальное логирование причины браковки
+                heading_context, _ = self._get_context_for_table(doc, best_score.table_index)
+                table = doc.tables[best_score.table_index]
+                
+                # Анализируем причины низкого score
+                rejection_reasons = []
+                
+                # Проверяем наличие визитов
+                visit_keywords = ["visit", "day", "week", "screening", "baseline", "визит", "день", "неделя", "цикл"]
+                first_row_cells = [normalize_text(cell.text).lower() for cell in table.rows[0].cells[:10]] if len(table.rows) > 0 else []
+                first_col_cells = [normalize_text(table.rows[i].cells[0].text).lower() if len(table.rows[i].cells) > 0 else "" 
+                                  for i in range(min(5, len(table.rows)))]
+                
+                visit_found = any(kw in cell for cell in first_row_cells + first_col_cells for kw in visit_keywords)
+                if not visit_found:
+                    rejection_reasons.append("no visits found")
+                
+                # Проверяем количество пустых ячеек
+                total_cells = sum(len(row.cells) for row in table.rows)
+                empty_cells = sum(1 for row in table.rows for cell in row.cells if not normalize_text(cell.text))
+                if total_cells > 0:
+                    empty_ratio = empty_cells / total_cells
+                    if empty_ratio > 0.7:
+                        rejection_reasons.append(f"too many empty cells ({empty_ratio:.1%})")
+                
+                # Проверяем размер таблицы
+                if len(table.rows) < 3 or (len(table.rows) > 0 and len(table.rows[0].cells) < 3):
+                    rejection_reasons.append(f"table too small ({len(table.rows)} rows, {len(table.rows[0].cells) if len(table.rows) > 0 else 0} cols)")
+                
+                # Проверяем контекст
+                ctx_text = " ".join([heading_context] + [normalize_text(p.text) for p in doc.paragraphs[:10]])
+                ctx_delta, _ = self._soa_context_score(ctx_text)
+                if ctx_delta < 0:
+                    rejection_reasons.append("negative context (appendix/scale)")
+                elif ctx_delta == 0:
+                    rejection_reasons.append("no SoA keywords in context")
+                
+                rejection_reason_str = "; ".join(rejection_reasons) if rejection_reasons else "low overall score"
+                
+                logger.debug(
+                    f"Таблица {best_score.table_index} бракуется: score={best_score.score:.1f} < 2.0. "
+                    f"Причины: {rejection_reason_str}. "
+                    f"Контекст: {heading_context!r}. "
+                    f"Размер: {len(table.rows)} строк, {len(table.rows[0].cells) if len(table.rows) > 0 else 0} столбцов"
+                )
         else:
             logger.info("Не найдено ни одной таблицы в документе")
         
@@ -546,8 +601,10 @@ class SoAExtractionService:
             
             # Формируем anchor_id для header cell:
             # {doc_version_id}:cell:{get_text_hash(text_norm + row_idx + col_idx)[:16]}
+            # ВАЖНО: Хеш вычисляется ТОЛЬКО от (text_norm + row_idx + col_idx), БЕЗ doc_version_id!
             cell_hash_input = f"{text_norm}:{row_idx}:{col_idx}"
             cell_hash = get_text_hash(cell_hash_input)[:16]
+            # doc_version_id используется ТОЛЬКО как префикс строки, НЕ попадает в хеш!
             base_anchor_id = f"{doc_version_id}:cell:{cell_hash}"
             anchor_id = _uniq_anchor_id(base_anchor_id)
             visit_anchor_ids[idx] = anchor_id
@@ -626,8 +683,10 @@ class SoAExtractionService:
             
             # Формируем anchor_id для procedure header cell:
             # {doc_version_id}:cell:{get_text_hash(text_norm + row_idx + col_idx)[:16]}
+            # ВАЖНО: Хеш вычисляется ТОЛЬКО от (text_norm + row_idx + col_idx), БЕЗ doc_version_id!
             cell_hash_input = f"{text_norm}:{row_idx}:{col_idx}"
             cell_hash = get_text_hash(cell_hash_input)[:16]
+            # doc_version_id используется ТОЛЬКО как префикс строки, НЕ попадает в хеш!
             base_anchor_id = f"{doc_version_id}:cell:{cell_hash}"
             anchor_id = _uniq_anchor_id(base_anchor_id)
             proc_anchor_ids[idx] = anchor_id
@@ -702,8 +761,10 @@ class SoAExtractionService:
                     
                     # Формируем anchor_id для body cell:
                     # {doc_version_id}:cell:{get_text_hash(text_norm + row_idx + col_idx)[:16]}
+                    # ВАЖНО: Хеш вычисляется ТОЛЬКО от (value_norm + row_idx + col_idx), БЕЗ doc_version_id!
                     cell_hash_input = f"{value_norm}:{row_idx}:{col_idx}"
                     cell_hash = get_text_hash(cell_hash_input)[:16]
+                    # doc_version_id используется ТОЛЬКО как префикс строки, НЕ попадает в хеш!
                     base_anchor_id = f"{doc_version_id}:cell:{cell_hash}"
                     anchor_id = _uniq_anchor_id(base_anchor_id)
                     
@@ -815,6 +876,23 @@ class SoAExtractionService:
             return [], None
         
         doc = Document(str(file_path))
+        
+        # Проверяем наличие таблиц в документе
+        tables_count = len(doc.tables)
+        logger.info(f"Найдено таблиц в документе: {tables_count}")
+        
+        if tables_count == 0:
+            logger.warning(f"В документе {doc_version_id} не найдено таблиц. Проверьте, что документ содержит таблицы в формате DOCX.")
+            return [], None
+        
+        # Логируем информацию о таблицах для отладки
+        for i, table in enumerate(doc.tables):
+            rows_count = len(table.rows)
+            cols_count = len(table.rows[0].cells) if rows_count > 0 else 0
+            logger.debug(
+                f"Таблица {i}: {rows_count} строк, {cols_count} столбцов, "
+                f"первая строка: {[normalize_text(cell.text)[:30] for cell in table.rows[0].cells[:5]] if rows_count > 0 else []}"
+            )
         
         # Собираем heading_stack из параграфов (для определения section_path)
         heading_stack: list[tuple[int, str]] = []

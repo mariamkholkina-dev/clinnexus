@@ -20,6 +20,7 @@
 - **Регрессионного тестирования**: проверка, что изменения в коде не ухудшили качество обработки
 - **Оценки покрытия**: проверка, насколько хорошо система обрабатывает разнообразные протоколы
 - **Тюнинга правил**: итеративное улучшение правил классификации (source_zone, SoA, факты, маппинг)
+- **Загрузки новых документов**: скрипт поддерживает загрузку файлов напрямую через параметры `--upload-file` и `--upload-dir`
 
 ### Когда нужно перезапускать кампанию?
 
@@ -97,7 +98,7 @@ ls -la <путь_из_source_file_uri>
 SELECT * FROM pg_extension WHERE extname = 'vector';
 ```
 
-**Примечание**: В текущей реализации кампания может работать без embeddings (chunks создаются, но векторизация может быть отложена).
+**Примечание**: В текущей реализации кампания может работать без embeddings (chunks создаются, но векторизация может быть отложена). Кампания ингестии **НЕ использует LLM** для основной обработки, но может использовать LLM-assist для проблемных секций при маппинге (если настроены API ключи и `SECURE_MODE=true`).
 
 ### 2.5 Документы для обработки
 
@@ -114,6 +115,7 @@ WHERE d.doc_type = 'protocol'
 
 **Как загрузить документы:**
 - Через API: `POST /api/v1/documents/{document_id}/versions` и `POST /api/v1/document-versions/{version_id}/upload`
+- Через скрипт кампании: `--upload-file` или `--upload-dir` (см. раздел 4.1)
 - Или через seed-скрипт (если есть тестовые данные)
 
 ---
@@ -194,6 +196,26 @@ python -m app.scripts.run_ingestion_campaign \
   --dry-run
 ```
 
+**Загрузка и обработка одного файла:**
+```bash
+cd backend
+python -m app.scripts.run_ingestion_campaign \
+  --workspace-id <workspace_uuid> \
+  --doc-type protocol \
+  --upload-file ./path/to/document.docx \
+  --output ./campaign_results
+```
+
+**Загрузка и обработка директории с файлами:**
+```bash
+cd backend
+python -m app.scripts.run_ingestion_campaign \
+  --workspace-id <workspace_uuid> \
+  --doc-type protocol \
+  --upload-dir ./documents \
+  --output ./campaign_results
+```
+
 ### 4.2 Минимальный запуск (5 документов)
 
 ```bash
@@ -239,13 +261,16 @@ python -m app.scripts.run_ingestion_campaign \
 ### 4.4 Параметры скрипта
 
 **Полный список параметров:**
-- `--workspace-id <uuid>` — фильтр по workspace (опционально)
+- `--workspace-id <uuid>` — фильтр по workspace (обязателен при загрузке файлов, опционален при обработке существующих документов)
 - `--doc-type <type>` — тип документа: `protocol`, `sap`, `any` (по умолчанию `protocol`)
 - `--limit <n>` — максимальное количество документов (опционально)
 - `--since <YYYY-MM-DD>` — фильтр по дате создания версии (опционально)
 - `--dry-run` — режим проверки без реальной ингестии
 - `--concurrency <n>` — количество параллельных задач (по умолчанию 1, **не рекомендуется менять** из-за рисков блокировок БД)
 - `--output <path>` — директория для сохранения отчетов (опционально, если не указано — вывод в консоль)
+- `--upload-file <path>` — путь к файлу для загрузки (DOCX, PDF, XLSX). При указании этого параметра файл будет загружен в БД и затем обработан
+- `--upload-dir <path>` — путь к директории с файлами для загрузки (рекурсивный поиск). Поддерживаемые форматы: DOCX, PDF, XLSX
+- `--study-code <code>` — код исследования для создаваемых исследований (опционально, по умолчанию генерируется автоматически)
 
 ### 4.5 Ожидаемое время выполнения
 
@@ -259,6 +284,8 @@ python -m app.scripts.run_ingestion_campaign \
 - Количество anchors (больше anchors = больше времени на обработку)
 - Наличие SoA таблиц (дополнительное время на извлечение)
 - Нагрузка на БД (если БД используется другими процессами)
+- Использование LLM-assist для проблемных секций (если настроено)
+- Topic mapping (только для протоколов, добавляет время обработки)
 
 ---
 
@@ -544,9 +571,10 @@ source_zones:
 - Заголовки не распознаются из-за проблем с source_zone классификацией
 
 **Где исправить:**
-- **Section Contracts**: через API `/api/section-contracts` или seed-скрипт (обновить `retrieval_recipe_json.signals`)
+- **Section Contracts**: через API `/api/v1/section-contracts` или seed-скрипт `seed_section_contracts.py` (обновить `retrieval_recipe_json.signals`)
 - **Mapping service**: `backend/app/services/section_mapping.py` (улучшить эвристики)
 - **Passport tuning**: через API `/api/v1/passport-tuning/mapping` (ручной маппинг кластеров)
+- **Таблица**: `target_section_contracts` (переименована из `section_contracts` в миграции 0017)
 
 **Как валидировать:**
 1. Проверить `summary_json.section_maps.per_target_section` для проблемных секций
@@ -567,9 +595,8 @@ source_zones:
 - Факты находятся в неожиданных местах (например, в таблицах, а не в тексте)
 
 **Где исправить:**
-- **Файл**: `backend/app/services/fact_extraction_rules.py` — реестр правил извлечения фактов
-- **Сервис**: `backend/app/services/fact_extraction.py` — логика применения правил
-- **Добавить regex-паттерны** в функцию `get_extraction_rules()` в `fact_extraction_rules.py`
+- **Файл**: `backend/app/services/fact_extraction.py` — логика применения правил и реестр правил извлечения фактов
+- **Добавить regex-паттерны** в функцию `get_extraction_rules()` или соответствующий метод в `fact_extraction.py`
 
 **Как валидировать:**
 1. Найти документ, где факт отсутствует
@@ -580,13 +607,8 @@ source_zones:
 
 **Пример добавления правила:**
 ```python
-# В backend/app/services/fact_extraction_rules.py, функция get_extraction_rules()
-rules.append(ExtractionRule(
-    fact_type="protocol_meta",
-    fact_key="protocol_version",
-    pattern=r"версия\s+протокола[:\s]+([\d.]+)",
-    # ... другие параметры
-))
+# В backend/app/services/fact_extraction.py, в соответствующем методе
+# Добавьте правило извлечения для нового паттерна
 ```
 
 ### 7.5 Много failed runs
@@ -995,6 +1017,6 @@ LIMIT 1;
 
 ---
 
-**Последнее обновление**: 2024-01-15  
+**Последнее обновление**: 2024-12-19  
 **Версия скрипта**: `backend/app/scripts/run_ingestion_campaign.py`
 

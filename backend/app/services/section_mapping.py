@@ -19,11 +19,13 @@ from app.db.enums import (
     SectionMapStatus,
 )
 from app.db.models.anchors import Anchor
+from app.db.models.facts import Fact, FactEvidence
 from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document, DocumentVersion
 from app.services.text_normalization import normalize_for_match, normalize_for_regex
 from app.services.zone_config import get_zone_config_service
 from app.services.lean_passport import normalize_passport
+from app.services.llm_client import LLMClient
 
 
 @dataclass
@@ -208,11 +210,15 @@ class SectionMappingService:
                 "процедуры",
             ]
         if key.endswith("synopsis") or ".synopsis" in key:
-            return ["synopsis", "краткое", "резюме", "синопсис"]
+            return ["synopsis", "краткое", "резюме", "синопсис", "краткое изложение", "общая информация"]
         if "title_page" in key or key.endswith("title") or ".title" in key:
             return ["title", "page", "титульный", "лист", "титульная"]
         if ".design" in key:
             return ["design", "study design", "дизайн", "схема", "план"]
+        if key.endswith("population") or ".population" in key:
+            return ["population", "популяция", "выбор исследуемой популяции", "критерии включения", "исследуемая популяция"]
+        if key.endswith("ethics") or ".ethics" in key:
+            return ["ethics", "этика", "этические аспекты", "нормативное обеспечение", "этические"]
         return []
 
     def _auto_derive_signals(
@@ -699,6 +705,33 @@ class SectionMappingService:
                     )
                     continue
 
+            # Специальная обработка для protocol.soa: проверяем наличие фактов SoA
+            if contract.target_section == "protocol.soa":
+                soa_anchor_ids = await self._get_soa_anchor_ids_from_facts(doc_version_id)
+                if soa_anchor_ids:
+                    # Если факты SoA найдены, создаём маппинг напрямую из anchor_ids
+                    # Пропускаем поиск заголовка через ключевые слова
+                    logger.info(
+                        f"SectionMapping: создание маппинга для protocol.soa из фактов SoA "
+                        f"(anchor_ids_count={len(soa_anchor_ids)})"
+                    )
+                    
+                    # Создаём или обновляем маппинг с anchor_ids из фактов
+                    section_map = await self._create_soa_map_from_facts(
+                        doc_version_id=doc_version_id,
+                        contract=contract,
+                        anchor_ids=soa_anchor_ids,
+                        existing_map=existing_maps.get(contract.target_section) if not force else None,
+                    )
+                    
+                    if section_map:
+                        new_maps.append(section_map)
+                        if section_map.status == SectionMapStatus.MAPPED:
+                            summary.sections_mapped_count += 1
+                        elif section_map.status == SectionMapStatus.NEEDS_REVIEW:
+                            summary.sections_needs_review_count += 1
+                    continue
+
             # Ищем кандидатов заголовков
             heading_candidate = await self._find_heading_candidate(
                 contract, outline, all_anchors, doc_version.document_language
@@ -868,9 +901,9 @@ class SectionMappingService:
         candidates: list[HeadingCandidate] = []
 
         def _get_heading_level_bounds(recipe_json: dict[str, Any]) -> tuple[int, int]:
-            # Дефолт: H1–H2. Можно задать в recipe_json.mapping или recipe_json.context_build.
+            # Дефолт: H1–H3. Можно задать в recipe_json.mapping или recipe_json.context_build.
             min_level = 1
-            max_level = 2
+            max_level = 3
             mapping_cfg = recipe_json.get("mapping")
             if isinstance(mapping_cfg, dict):
                 if isinstance(mapping_cfg.get("min_heading_level"), int):
@@ -1129,6 +1162,59 @@ class SectionMappingService:
 
         return None
 
+    async def _get_soa_anchor_ids_from_facts(
+        self, doc_version_id: UUID
+    ) -> list[str] | None:
+        """
+        Получает anchor_ids всех ячеек (CELL) из фактов SoA для данной версии документа.
+        
+        Если SoAExtractionService уже нашёл таблицу, это видно по наличию фактов
+        fact_type='soa' для этой версии. В этом случае возвращаем все anchor_ids
+        из FactEvidence для этих фактов.
+        
+        Args:
+            doc_version_id: ID версии документа
+            
+        Returns:
+            Список anchor_ids или None, если факты SoA не найдены
+        """
+        # Проверяем наличие фактов с fact_type='soa' для данной версии
+        facts_stmt = select(Fact).where(
+            Fact.fact_type == "soa",
+            Fact.created_from_doc_version_id == doc_version_id,
+        )
+        facts_result = await self.db.execute(facts_stmt)
+        soa_facts = facts_result.scalars().all()
+        
+        if not soa_facts:
+            logger.debug(
+                f"SectionMapping: факты SoA не найдены для doc_version_id={doc_version_id}"
+            )
+            return None
+        
+        # Собираем все anchor_ids из FactEvidence для всех фактов SoA
+        fact_ids = [fact.id for fact in soa_facts]
+        evidence_stmt = select(FactEvidence.anchor_id).where(
+            FactEvidence.fact_id.in_(fact_ids)  # type: ignore
+        )
+        evidence_result = await self.db.execute(evidence_stmt)
+        anchor_ids = list(set(evidence_result.scalars().all()))  # Убираем дубликаты
+        
+        if not anchor_ids:
+            logger.debug(
+                f"SectionMapping: anchor_ids не найдены в FactEvidence для фактов SoA "
+                f"(doc_version_id={doc_version_id}, fact_count={len(soa_facts)})"
+            )
+            return None
+        
+        logger.info(
+            f"SectionMapping: найдены anchor_ids из фактов SoA "
+            f"(doc_version_id={doc_version_id}, fact_count={len(soa_facts)}, "
+            f"anchor_ids_count={len(anchor_ids)})"
+        )
+        
+        return anchor_ids
+
     async def _find_soa_fallback(
         self, all_anchors: list[Anchor]
     ) -> HeadingCandidate | None:
@@ -1171,6 +1257,70 @@ class SectionMappingService:
                         )
 
         return None
+
+    async def _create_soa_map_from_facts(
+        self,
+        doc_version_id: UUID,
+        contract: TargetSectionContract,
+        anchor_ids: list[str],
+        existing_map: TargetSectionMap | None,
+    ) -> TargetSectionMap | None:
+        """
+        Создаёт или обновляет TargetSectionMap для protocol.soa из фактов SoA.
+        
+        Args:
+            doc_version_id: ID версии документа
+            contract: TargetSectionContract для protocol.soa
+            anchor_ids: Список anchor_ids из фактов SoA
+            existing_map: Существующий маппинг (если есть)
+            
+        Returns:
+            TargetSectionMap или None
+        """
+        if existing_map and existing_map.status == SectionMapStatus.OVERRIDDEN:
+            # Не трогаем overridden
+            logger.debug(
+                "SectionMapping: skip overridden (soa from facts) "
+                f"(target_section={contract.target_section})"
+            )
+            return None
+        
+        # Устанавливаем confidence=0.95, если таблица была успешно извлечена
+        confidence = 0.95
+        status = SectionMapStatus.MAPPED
+        notes = f"Автоматический маппинг из фактов SoA (anchor_ids_count={len(anchor_ids)})"
+        
+        if existing_map:
+            # Обновляем существующий
+            existing_map.anchor_ids = anchor_ids
+            existing_map.confidence = confidence
+            existing_map.status = status
+            existing_map.notes = notes
+            existing_map.mapped_by = SectionMapMappedBy.SYSTEM
+            logger.info(
+                "SectionMapping: soa mapped from facts (update) "
+                f"(target_section={contract.target_section}, status={status.value}, "
+                f"confidence={confidence:.2f}, anchors={len(anchor_ids)})"
+            )
+            return existing_map
+        else:
+            # Создаём новый
+            section_map = TargetSectionMap(
+                doc_version_id=doc_version_id,
+                target_section=contract.target_section,
+                anchor_ids=anchor_ids,
+                chunk_ids=None,
+                confidence=confidence,
+                status=status,
+                mapped_by=SectionMapMappedBy.SYSTEM,
+                notes=notes,
+            )
+            logger.info(
+                "SectionMapping: soa mapped from facts (create) "
+                f"(target_section={contract.target_section}, status={status.value}, "
+                f"confidence={confidence:.2f}, anchors={len(anchor_ids)})"
+            )
+            return section_map
 
     async def _create_or_update_section_map(
         self,
@@ -1261,6 +1411,65 @@ class SectionMappingService:
             f"(target_section={contract.target_section}, heading_anchor_id={heading_candidate.anchor_id}, "
             f"anchors_in_block={len(anchor_ids)}, by_zone={by_zone_stats})"
         )
+
+        # LLM Triage: если confidence в диапазоне 0.4-0.65 (зона сомнения)
+        if 0.4 <= confidence <= 0.65:
+            logger.info(
+                f"SectionMapping: LLM Triage запущен "
+                f"(target_section={contract.target_section}, confidence={confidence:.2f})"
+            )
+            
+            # Получаем сниппет текста
+            snippet = self._get_snippet(heading_candidate.anchor, all_anchors)
+            
+            # Получаем список доступных topic_keys (target_section) для данного doc_type
+            doc_version = await self.db.get(DocumentVersion, doc_version_id)
+            if doc_version:
+                document = await self.db.get(Document, doc_version.document_id)
+                if document:
+                    contracts_stmt = select(TargetSectionContract).where(
+                        TargetSectionContract.doc_type == document.doc_type,
+                        TargetSectionContract.is_active == True,
+                    )
+                    contracts_result = await self.db.execute(contracts_stmt)
+                    all_contracts = contracts_result.scalars().all()
+                    available_topic_keys = [c.target_section for c in all_contracts if c.target_section]
+                    
+                    # Вызываем LLM Triage
+                    selected_topic_key, rationale = await self._llm_triage(
+                        heading_text=heading_candidate.anchor.text_norm or "",
+                        snippet=snippet,
+                        available_topic_keys=available_topic_keys,
+                        current_topic_key=contract.target_section,
+                    )
+                    
+                    # Применяем результат LLM только если есть четкое обоснование
+                    if selected_topic_key and rationale:
+                        # Если LLM выбрала другой topic_key, обновляем contract (но это сложно)
+                        # Пока просто повышаем confidence, если LLM подтвердила выбор
+                        if selected_topic_key == contract.target_section:
+                            # LLM подтвердила текущий выбор - повышаем confidence
+                            confidence = min(0.75, confidence + 0.15)
+                            notes = f"{notes}; LLM Triage подтвердил (rationale: {rationale[:100]})"
+                            logger.info(
+                                f"SectionMapping: LLM Triage подтвердил выбор "
+                                f"(target_section={contract.target_section}, "
+                                f"confidence={confidence:.2f}, rationale_len={len(rationale)})"
+                            )
+                        elif selected_topic_key != "unknown":
+                            # LLM выбрала другой topic_key - оставляем текущий, но повышаем confidence немного
+                            confidence = min(0.7, confidence + 0.1)
+                            notes = f"{notes}; LLM Triage предложил {selected_topic_key} (rationale: {rationale[:100]})"
+                            logger.info(
+                                f"SectionMapping: LLM Triage предложил другой topic_key "
+                                f"(current={contract.target_section}, suggested={selected_topic_key}, "
+                                f"confidence={confidence:.2f})"
+                            )
+                    else:
+                        logger.debug(
+                            f"SectionMapping: LLM Triage не дал четкого обоснования "
+                            f"(target_section={contract.target_section})"
+                        )
 
         # Определяем status
         if confidence >= 0.7:
@@ -1476,10 +1685,20 @@ class SectionMappingService:
             normalize_for_match(kw) in text_normalized for kw in signals.must_keywords
         )
 
+        # Если must_keywords не дали совпадения, проверяем should_keywords со штрафом
+        has_should_match = False
+        if not has_must_match:
+            has_should_match = any(
+                normalize_for_match(kw) in text_normalized for kw in signals.should_keywords
+            )
+
         if has_regex_match and has_must_match:
             confidence = 0.9
         elif has_regex_match or has_must_match:
             confidence = 0.7
+        elif has_should_match:
+            # Fallback на should_keywords со штрафом к confidence
+            confidence = 0.5
         else:
             confidence = 0.5
 
@@ -1492,10 +1711,204 @@ class SectionMappingService:
             "SectionMapping: capture_heading_block confidence "
             f"(target_section={contract.target_section}, confidence={confidence:.2f}, "
             f"has_regex_match={has_regex_match}, has_must_match={has_must_match}, "
-            f"confidence_cap={signals.confidence_cap})"
+            f"has_should_match={has_should_match}, confidence_cap={signals.confidence_cap})"
         )
 
         return anchor_ids, confidence, notes, by_zone_stats
+
+    def _get_snippet(self, heading_anchor: Anchor, all_anchors: list[Anchor]) -> str:
+        """
+        Получает сниппет (1-2 первых paragraph после заголовка, до 300 символов).
+
+        Args:
+            heading_anchor: Anchor заголовка
+            all_anchors: Все anchors документа
+
+        Returns:
+            Сниппет текста
+        """
+        heading_para_index = heading_anchor.location_json.get("para_index", 0) if isinstance(heading_anchor.location_json, dict) else 0
+        snippet_parts: list[str] = []
+        total_length = 0
+
+        for anchor in all_anchors:
+            para_index = anchor.location_json.get("para_index", 0) if isinstance(anchor.location_json, dict) else 0
+            if para_index <= heading_para_index:
+                continue
+
+            # Берём только первые 2 paragraph после заголовка
+            if anchor.content_type == AnchorContentType.P:
+                text = anchor.text_norm[:300] if anchor.text_norm else ""
+                if total_length + len(text) > 300:
+                    text = text[: 300 - total_length]
+                snippet_parts.append(text)
+                total_length += len(text)
+                if len(snippet_parts) >= 2 or total_length >= 300:
+                    break
+
+        return " ".join(snippet_parts)
+
+    async def _llm_triage(
+        self,
+        heading_text: str,
+        snippet: str,
+        available_topic_keys: list[str],
+        current_topic_key: str,
+    ) -> tuple[str | None, str | None]:
+        """
+        Выполняет LLM триаж для выбора наиболее подходящего Topic Key.
+
+        Args:
+            heading_text: Текст заголовка
+            snippet: Сниппет текста после заголовка
+            available_topic_keys: Список доступных Topic Keys
+            current_topic_key: Текущий Topic Key (который был выбран алгоритмически)
+
+        Returns:
+            (selected_topic_key, rationale) или (None, None) если LLM не дала четкого обоснования
+        """
+        # Проверяем, что LLM настроен
+        if not settings.llm_provider or not settings.llm_base_url or not settings.llm_api_key:
+            logger.debug("SectionMapping: LLM не настроен, пропускаем триаж")
+            return None, None
+
+        try:
+            import json
+            import httpx
+            import uuid
+            
+            llm_client = LLMClient()
+            request_id = str(uuid.uuid4())
+            
+            # Формируем короткий промпт
+            system_prompt = """Ты помощник для маппинга секций клинических протоколов.
+Твоя задача: выбрать наиболее подходящий Topic Key из списка для данного текста.
+Если ничего не подходит, ответь 'unknown'.
+Отвечай ТОЛЬКО в формате JSON: {"topic_key": "...", "rationale": "..."}"""
+
+            user_prompt_text = f"""Заголовок: {heading_text}
+
+Сниппет текста: {snippet}
+
+Доступные Topic Keys: {', '.join(available_topic_keys)}
+Текущий выбор: {current_topic_key}
+
+Выбери наиболее подходящий Topic Key из списка. Если ничего не подходит, ответь 'unknown'."""
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt_text},
+            ]
+            
+            logger.debug(
+                f"SectionMapping: LLM Triage запрос "
+                f"(request_id={request_id}, heading={heading_text[:50]}, "
+                f"current_topic_key={current_topic_key})"
+            )
+
+            # Вызываем LLM в зависимости от провайдера
+            if llm_client.provider.value == "azure_openai":
+                url = f"{llm_client.base_url}/openai/deployments/{llm_client.model}/chat/completions"
+                headers = {
+                    "api-key": llm_client.api_key,
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "messages": messages,
+                    "temperature": 0.0,  # Детерминированность для триажа
+                    "max_tokens": 500,
+                }
+            elif llm_client.provider.value == "openai_compatible":
+                url = f"{llm_client.base_url}/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {llm_client.api_key}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": llm_client.model,
+                    "messages": messages,
+                    "temperature": 0.0,
+                    "max_tokens": 500,
+                }
+            else:  # local
+                url = f"{llm_client.base_url}/v1/chat/completions"
+                headers = {"Content-Type": "application/json"}
+                if llm_client.api_key:
+                    headers["Authorization"] = f"Bearer {llm_client.api_key}"
+                payload = {
+                    "model": llm_client.model,
+                    "messages": messages,
+                    "temperature": 0.0,
+                    "max_tokens": 500,
+                }
+
+            async with httpx.AsyncClient(timeout=llm_client.timeout_sec) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                response_data = response.json()
+
+            # Парсим ответ
+            content = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not content:
+                logger.warning("SectionMapping: LLM Triage вернул пустой ответ")
+                return None, None
+
+            # Извлекаем JSON из ответа
+            content_str = str(content).strip()
+            if content_str.startswith("```"):
+                parts = content_str.split("```")
+                if len(parts) >= 3:
+                    inner = parts[1].strip()
+                    if "\n" in inner:
+                        first_line, rest = inner.split("\n", 1)
+                        if first_line.strip().lower() == "json":
+                            inner = rest.strip()
+                    content_str = inner.strip()
+
+            # Ищем JSON объект
+            if "{" in content_str and "}" in content_str:
+                l = content_str.find("{")
+                r = content_str.rfind("}")
+                if l != -1 and r != -1 and r > l:
+                    content_str = content_str[l : r + 1]
+
+            # Парсим JSON
+            try:
+                response_json = json.loads(content_str)
+                selected_topic_key = response_json.get("topic_key")
+                rationale = response_json.get("rationale", "")
+
+                # Проверяем, что есть четкое обоснование (не пустое и не слишком короткое)
+                if not rationale or len(rationale.strip()) < 10:
+                    logger.debug(
+                        f"SectionMapping: LLM Triage вернул недостаточное обоснование "
+                        f"(rationale_len={len(rationale) if rationale else 0})"
+                    )
+                    return None, None
+
+                # Проверяем, что выбранный ключ валиден
+                if selected_topic_key and selected_topic_key != "unknown":
+                    if selected_topic_key not in available_topic_keys:
+                        logger.warning(
+                            f"SectionMapping: LLM Triage вернул невалидный topic_key: {selected_topic_key}"
+                        )
+                        return None, None
+
+                logger.info(
+                    f"SectionMapping: LLM Triage результат "
+                    f"(request_id={request_id}, selected_topic_key={selected_topic_key}, "
+                    f"rationale_len={len(rationale)})"
+                )
+
+                return selected_topic_key, rationale
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"SectionMapping: LLM Triage ошибка парсинга JSON: {e}")
+                return None, None
+
+        except Exception as e:
+            logger.warning(f"SectionMapping: LLM Triage ошибка: {e}", exc_info=True)
+            return None, None
 
     async def _resolve_conflicts(
         self, doc_version_id: UUID, section_maps: list[SectionMap]

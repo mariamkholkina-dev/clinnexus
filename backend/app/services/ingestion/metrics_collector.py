@@ -24,6 +24,7 @@ from app.services.ingestion.metrics import (
     IngestionMetrics,
     SectionMapsMetrics,
     SoAMetrics,
+    TopicsMetrics,
     compute_percentiles,
 )
 
@@ -180,13 +181,21 @@ class MetricsCollector:
     
     async def collect_facts_metrics(self, study_id: str) -> None:
         """Собирает метрики по фактам."""
-        # Подсчёт фактов
+        from app.core.logging import logger
+        
+        # Подсчёт фактов - считаем все факты для study_id, не только для текущей версии документа
+        # Факты относятся к исследованию в целом, а не к конкретной версии документа
         stmt = select(func.count(Fact.id)).where(
             Fact.study_id == UUID(study_id),
-            Fact.created_from_doc_version_id == UUID(self.doc_version_id),
         )
         result = await self.db.execute(stmt)
-        self.metrics.facts.total = result.scalar() or 0
+        facts_total = result.scalar() or 0
+        self.metrics.facts.total = facts_total
+        
+        logger.debug(
+            f"Facts metrics для study_id={study_id}: total={facts_total}, "
+            f"doc_version_id={self.doc_version_id}"
+        )
         
         # Группировка по fact_key (fact_type/fact_key)
         stmt = select(
@@ -195,7 +204,6 @@ class MetricsCollector:
             func.count(Fact.id).label("count"),
         ).where(
             Fact.study_id == UUID(study_id),
-            Fact.created_from_doc_version_id == UUID(self.doc_version_id),
         ).group_by(Fact.fact_type, Fact.fact_key)
         
         result = await self.db.execute(stmt)
@@ -209,7 +217,6 @@ class MetricsCollector:
             func.count(Fact.id).label("count"),
         ).where(
             Fact.study_id == UUID(study_id),
-            Fact.created_from_doc_version_id == UUID(self.doc_version_id),
         ).group_by(Fact.status)
         
         result = await self.db.execute(stmt)
@@ -219,6 +226,24 @@ class MetricsCollector:
         # Конфликтующие факты
         conflicting_count = self.metrics.facts.by_status.get(FactStatus.CONFLICTING.value, 0)
         self.metrics.facts.conflicting_count = conflicting_count
+        
+        # Факты со статусом 'extracted' или 'validated' с confidence >= 0.7
+        # Получаем все факты для проверки
+        stmt = select(Fact.status, Fact.confidence).where(
+            Fact.study_id == UUID(study_id),
+        )
+        result = await self.db.execute(stmt)
+        validated_count = 0
+        for row in result.all():
+            status = row.status
+            confidence = row.confidence
+            # Считаем валидными факты со статусом 'extracted' или 'validated' с confidence >= 0.7
+            if status in (FactStatus.EXTRACTED, FactStatus.VALIDATED):
+                # Если confidence None, не считаем валидным (нужна явная уверенность >= 0.7)
+                if confidence is not None and confidence >= 0.7:
+                    validated_count += 1
+        
+        self.metrics.facts.validated_count = validated_count
         
         # Проверка обязательных фактов (будет заполнено позже при проверке)
         # Здесь просто инициализируем список
@@ -346,6 +371,98 @@ class MetricsCollector:
         for row in result.all():
             zone_key = row.source_zone.value if hasattr(row.source_zone, 'value') else str(row.source_zone)
             self.metrics.source_zones.by_zone_counts[zone_key] = row.count
+    
+    async def collect_topics_metrics(self, doc_type: DocumentType) -> None:
+        """Собирает метрики по маппингу топиков."""
+        # Топики собираются только для протоколов
+        if doc_type != DocumentType.PROTOCOL:
+            return
+        
+        from app.db.models.topics import HeadingBlockTopicAssignment, Topic
+        from app.services.topic_repository import TopicRepository
+        from app.core.logging import logger
+        
+        # Получаем workspace_id из документа
+        doc_version = await self.db.get(DocumentVersion, UUID(self.doc_version_id))
+        if not doc_version:
+            logger.warning(f"DocumentVersion {self.doc_version_id} не найден для collect_topics_metrics")
+            return
+        
+        document = await self.db.get(Document, doc_version.document_id)
+        if not document:
+            logger.warning(f"Document {doc_version.document_id} не найден для collect_topics_metrics")
+            return
+        
+        workspace_id = document.workspace_id
+        
+        # Получаем список всех активных топиков, применимых к протоколу
+        topic_repo = TopicRepository(self.db)
+        all_topics = await topic_repo.list_topics(workspace_id=workspace_id, is_active=True)
+        
+        # Фильтруем топики по applicable_to (если пусто, применим ко всем)
+        applicable_topics = []
+        for topic in all_topics:
+            applicable_to = topic.applicable_to_json or []
+            if not applicable_to or doc_type.value in applicable_to:
+                applicable_topics.append(topic.topic_key)
+        
+        # Общее количество мастер-топиков (берём максимальное из 15 или фактическое количество)
+        total_topics = max(15, len(applicable_topics)) if applicable_topics else 15
+        self.metrics.topics.total_topics = total_topics
+        
+        # Получаем уникальные topic_key из heading_block_topic_assignments для этой версии документа
+        # Используем HeadingBlockTopicAssignment вместо TopicEvidence, так как привязки хранятся там
+        stmt = select(func.distinct(HeadingBlockTopicAssignment.topic_key)).where(
+            HeadingBlockTopicAssignment.doc_version_id == UUID(self.doc_version_id)
+        )
+        result = await self.db.execute(stmt)
+        mapped_topic_keys = {row[0] for row in result.all()}
+        
+        # Дополнительная проверка: сколько всего assignments в БД
+        stmt_count = select(func.count(HeadingBlockTopicAssignment.id)).where(
+            HeadingBlockTopicAssignment.doc_version_id == UUID(self.doc_version_id)
+        )
+        result_count = await self.db.execute(stmt_count)
+        assignments_count = result_count.scalar() or 0
+        
+        logger.info(
+            f"Topics metrics для doc_version_id={self.doc_version_id}: "
+            f"workspace_id={workspace_id}, "
+            f"all_topics_in_workspace={len(all_topics)}, "
+            f"applicable_topics={len(applicable_topics)} ({applicable_topics[:10] if applicable_topics else []}), "
+            f"assignments_in_db={assignments_count}, "
+            f"mapped_topic_keys={len(mapped_topic_keys)} ({sorted(list(mapped_topic_keys))[:10] if mapped_topic_keys else []})"
+        )
+        
+        # Считаем количество замаппленных топиков
+        if applicable_topics:
+            # Если есть список применимых топиков, считаем только те, что привязаны
+            mapped_count = len([key for key in applicable_topics if key in mapped_topic_keys])
+        else:
+            # Если нет применимых топиков в workspace, но есть привязки, считаем все привязанные
+            mapped_count = len(mapped_topic_keys)
+            # Если есть привязанные топики, обновляем total_topics на основе фактически привязанных
+            # Используем максимальное из 15 (стандарт) или фактически привязанных
+            if mapped_count > 0:
+                total_topics = max(15, mapped_count)
+                self.metrics.topics.total_topics = total_topics
+            else:
+                # Если нет ни применимых, ни привязанных топиков, оставляем total_topics = 15
+                mapped_count = 0
+        
+        self.metrics.topics.mapped_count = mapped_count
+        
+        # Вычисляем процент покрытия
+        # Если есть привязанные топики, но нет применимых в workspace, считаем процент от фактически привязанных
+        if total_topics > 0:
+            self.metrics.topics.mapped_rate = mapped_count / total_topics
+        else:
+            self.metrics.topics.mapped_rate = 0.0
+        
+        logger.info(
+            f"Topics metrics результат: mapped_count={mapped_count}, "
+            f"total_topics={total_topics}, mapped_rate={self.metrics.topics.mapped_rate:.4f} ({self.metrics.topics.mapped_rate*100:.2f}%)"
+        )
     
     def finalize(self) -> None:
         """Финализирует метрики (вычисляет проценты и процентили)."""

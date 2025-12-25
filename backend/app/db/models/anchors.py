@@ -52,9 +52,32 @@ class Vector1536(UserDefinedType):
         return process
 
     def result_processor(self, dialect, coltype):  # type: ignore[override]
-        # Для MVP достаточно вернуть строку/сырое значение; чтение embedding не требуется.
+        """
+        Обрабатывает значение вектора при чтении из БД.
+        
+        pgvector с register_vector_async автоматически конвертирует вектор в список float,
+        но для надежности проверяем и конвертируем явно.
+        """
         def process(value):
-            return value
+            if value is None:
+                return None
+            # Если это уже список float, возвращаем как есть
+            if isinstance(value, list):
+                return [float(x) for x in value]
+            # Если это объект Vector из pgvector, конвертируем в список
+            if hasattr(value, 'to_list'):
+                return value.to_list()
+            # Если это строка (текстовое представление), парсим
+            if isinstance(value, str):
+                # Формат: "[1.0,2.0,3.0,...]"
+                value = value.strip()
+                if value.startswith('[') and value.endswith(']'):
+                    return [float(x.strip()) for x in value[1:-1].split(',')]
+            # Fallback: пытаемся конвертировать в список
+            try:
+                return list(value) if hasattr(value, '__iter__') else [float(value)]
+            except (TypeError, ValueError):
+                return None
 
         return process
 

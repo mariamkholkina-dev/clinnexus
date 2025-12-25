@@ -32,6 +32,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -296,108 +297,38 @@ def save_benchmark_artifacts(
     study_id: str,
     version_id: str,
 ) -> None:
-    """Сохраняет артефакты фактов и SoA после успешной ингестии."""
+    """Сохраняет артефакты фактов, SoA и topic_evidence после успешной ингестии."""
     target_dir = project_root / "benchmark_results" / study_code
     ensure_dir(target_dir)
     facts_path = target_dir / f"v{version_number}_facts.json"
     soa_path = target_dir / f"v{version_number}_soa.json"
+    topics_path = target_dir / f"v{version_number}_topics.json"
     
-    download_json_to_file(f"{api_base}/api/studies/{study_id}/facts", facts_path)
+    # Скачиваем факты и обогащаем их found_in_preferred_topic
+    facts_data = http_json("GET", f"{api_base}/api/studies/{study_id}/facts", timeout=120, raise_on_error=False)
+    if facts_data:
+        # Добавляем found_in_preferred_topic из meta_json
+        for fact in facts_data:
+            meta_json = fact.get("meta_json") or {}
+            fact["found_in_preferred_topic"] = meta_json.get("found_in_preferred_topic", False)
+        ensure_dir(facts_path.parent)
+        with open(facts_path, "w", encoding="utf-8") as f:
+            json.dump(facts_data, f, ensure_ascii=False, indent=2)
+    
     download_json_to_file(f"{api_base}/api/document-versions/{version_id}/soa", soa_path)
+    
+    # Сохраняем topic_evidence
+    download_json_to_file(f"{api_base}/api/document-versions/{version_id}/topics", topics_path)
 
 
-def create_document_version(api_base: str, document_id: str, version_label: str) -> str:
+def create_document_version(api_base: str, document_id: str, version_label: str, effective_date: Optional[str] = None) -> str:
     """Создаёт новую версию документа и возвращает version_id."""
     url = f"{api_base}/api/documents/{document_id}/versions"
     body = {"version_label": version_label}
+    if effective_date is not None:
+        body["effective_date"] = effective_date
     ver = http_json("POST", url, json_body=body, timeout=30)
     return ver["id"]
-
-
-def extract_detailed_stats(version_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Извлекает детальную статистику по шагам обработки из данных версии."""
-    summary = version_data.get("ingestion_summary_json", {})
-    
-    # Статистика по SoA (Schedule of Activities)
-    soa_stats = {
-        "detected": False,
-        "confidence": None,
-        "visits_count": 0,
-        "procedures_count": 0,
-        "matrix_cells": 0,
-    }
-    
-    # Проверяем наличие SoA фактов через ingestion_summary_json
-    soa_facts = summary.get("soa_facts_written", {})
-    if isinstance(soa_facts, dict):
-        soa_stats["detected"] = (
-            soa_facts.get("visits", False) or
-            soa_facts.get("procedures", False) or
-            soa_facts.get("matrix", False)
-        )
-        counts = soa_facts.get("counts", {})
-        soa_stats["visits_count"] = counts.get("visits", 0)
-        soa_stats["procedures_count"] = counts.get("procedures", 0)
-        soa_stats["matrix_cells"] = counts.get("matrix", 0)
-    
-    # Проверяем также через метрики
-    metrics = summary.get("metrics", {})
-    soa_metrics = metrics.get("soa", {})
-    if soa_metrics.get("found"):
-        soa_stats["detected"] = True
-        soa_stats["confidence"] = soa_metrics.get("table_score")
-        if soa_stats["visits_count"] == 0:
-            soa_stats["visits_count"] = soa_metrics.get("visits_count", 0)
-        if soa_stats["procedures_count"] == 0:
-            soa_stats["procedures_count"] = soa_metrics.get("procedures_count", 0)
-    
-    # Статистика по Chunks (Narrative Index)
-    chunks_stats = {
-        "created": summary.get("chunks_created", 0),
-        "anchors_per_chunk_avg": None,
-    }
-    chunk_metrics = metrics.get("chunks", {})
-    if chunk_metrics:
-        chunks_stats["created"] = chunk_metrics.get("total", chunks_stats["created"])
-        anchors_count = summary.get("anchors_created", 0)
-        if chunks_stats["created"] > 0 and anchors_count > 0:
-            chunks_stats["anchors_per_chunk_avg"] = round(anchors_count / chunks_stats["created"], 2)
-    
-    # Статистика по Facts (Rules-first)
-    facts_stats = {
-        "total_extracted": summary.get("facts_count", 0),
-        "needs_review": [],
-        "by_type": {},
-    }
-    facts_metrics = metrics.get("facts", {})
-    if facts_metrics:
-        facts_stats["total_extracted"] = facts_metrics.get("total", facts_stats["total_extracted"])
-        facts_stats["needs_review"] = facts_metrics.get("needs_review_list", [])
-        facts_stats["by_type"] = facts_metrics.get("by_type", {})
-    
-    # Статистика по Section Mapping
-    mapping_stats = {
-        "sections_mapped": summary.get("sections_mapped_count", 0),
-        "needs_review": summary.get("sections_needs_review_count", 0),
-        "warnings": summary.get("mapping_warnings", []),
-    }
-    
-    # Также проверяем через docx_summary, если есть
-    docx_summary = summary.get("docx_summary") or {}
-    if docx_summary:
-        if mapping_stats["sections_mapped"] == 0:
-            mapping_stats["sections_mapped"] = docx_summary.get("sections_mapped_count", 0)
-        if mapping_stats["needs_review"] == 0:
-            mapping_stats["needs_review"] = docx_summary.get("sections_needs_review_count", 0)
-        if not mapping_stats["warnings"]:
-            mapping_stats["warnings"] = docx_summary.get("mapping_warnings", [])
-    
-    return {
-        "soa": soa_stats,
-        "chunks": chunks_stats,
-        "facts": facts_stats,
-        "section_mapping": mapping_stats,
-    }
 
 
 def calculate_file_sha256(file_path: Path) -> str:
@@ -623,11 +554,16 @@ def extract_detailed_stats(version_data: Dict[str, Any]) -> Dict[str, Any]:
     soa_metrics = metrics.get("soa", {})
     if soa_metrics.get("found"):
         soa_stats["detected"] = True
-        soa_stats["confidence"] = soa_metrics.get("table_score")
+        # Сначала проверяем корень summary_json (приоритет), потом метрики
+        soa_stats["confidence"] = summary.get("soa_confidence") or soa_metrics.get("table_score")
         if soa_stats["visits_count"] == 0:
             soa_stats["visits_count"] = soa_metrics.get("visits_count", 0)
         if soa_stats["procedures_count"] == 0:
             soa_stats["procedures_count"] = soa_metrics.get("procedures_count", 0)
+    else:
+        # Даже если SoA не найден через метрики, проверяем корень summary_json
+        if summary.get("soa_confidence") is not None:
+            soa_stats["confidence"] = summary.get("soa_confidence")
     
     # Статистика по Chunks (Narrative Index)
     chunks_stats = {
@@ -643,15 +579,32 @@ def extract_detailed_stats(version_data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Статистика по Facts (Rules-first)
     facts_stats = {
-        "total_extracted": summary.get("facts_count", 0),
+        "total_extracted": summary.get("facts_extracted_total") or summary.get("facts_count", 0),
+        "validated_count": summary.get("facts_validated_count", 0),
+        "conflicting_count": summary.get("facts_conflicting_count", 0),
         "needs_review": [],
         "by_type": {},
     }
     facts_metrics = metrics.get("facts", {})
     if facts_metrics:
         facts_stats["total_extracted"] = facts_metrics.get("total", facts_stats["total_extracted"])
+        facts_stats["validated_count"] = facts_metrics.get("validated_count", facts_stats["validated_count"])
+        facts_stats["conflicting_count"] = facts_metrics.get("conflicting_count", facts_stats["conflicting_count"])
         facts_stats["needs_review"] = facts_metrics.get("needs_review_list", [])
         facts_stats["by_type"] = facts_metrics.get("by_type", {})
+    
+    # Статистика по Topic Mapping
+    topics_stats = {
+        "mapped_count": summary.get("topics_mapped_count", 0),
+        "mapped_rate": summary.get("topics_mapped_rate", 0.0),
+        "total_topics": summary.get("topics", {}).get("total_topics", 15) if isinstance(summary.get("topics"), dict) else 15,
+    }
+    # Также проверяем через topics в метриках
+    topics_metrics = metrics.get("topics", {})
+    if topics_metrics:
+        topics_stats["mapped_count"] = topics_metrics.get("mapped_count", topics_stats["mapped_count"])
+        topics_stats["mapped_rate"] = topics_metrics.get("mapped_rate", topics_stats["mapped_rate"])
+        topics_stats["total_topics"] = topics_metrics.get("total_topics", topics_stats["total_topics"])
     
     # Статистика по Section Mapping
     mapping_stats = {
@@ -674,6 +627,7 @@ def extract_detailed_stats(version_data: Dict[str, Any]) -> Dict[str, Any]:
         "soa": soa_stats,
         "chunks": chunks_stats,
         "facts": facts_stats,
+        "topics": topics_stats,
         "section_mapping": mapping_stats,
     }
 
@@ -714,9 +668,13 @@ def process_file(
                 document_id = create_document(api_base, study_id, "protocol", doc_title)
                 print(f"    Создан документ: document_id={document_id}")
             
+            # Получаем дату изменения файла для effective_date
+            file_mtime = os.path.getmtime(file_path)
+            effective_date = datetime.fromtimestamp(file_mtime).date().isoformat()
+            
             # Создаём версию
-            version_id = create_document_version(api_base, document_id, version_label)
-            print(f"    Создана версия: version_id={version_id}")
+            version_id = create_document_version(api_base, document_id, version_label, effective_date=effective_date)
+            print(f"    Создана версия: version_id={version_id} (effective_date={effective_date})")
         
         # Загружаем файл
         print(f"    Загрузка файла...")
@@ -796,6 +754,36 @@ def process_file(
         if mapping["needs_review"] > 0:
             print(f"        (требуют проверки: {mapping['needs_review']})")
         
+        # Topic Mapping Quality
+        topics = detailed_stats.get("topics", {})
+        if topics:
+            topics_mapped = topics.get("mapped_count", 0)
+            topics_total = topics.get("total_topics", 15)
+            topics_rate = topics.get("mapped_rate", 0.0)
+            print(f"      📊 Topic Mapping Quality: {topics_rate * 100:.1f}% ({topics_mapped}/{topics_total})")
+        
+        # Fact Extraction
+        facts = detailed_stats.get("facts", {})
+        facts_total = facts.get("total_extracted", 0)
+        facts_conflicts = facts.get("conflicting_count", 0)
+        print(f"      🧪 Fact Extraction: {facts_total} found, {facts_conflicts} conflicts.")
+        
+        # LLM информация (если использовался)
+        llm_info = summary.get("llm_info")
+        if llm_info:
+            llm_model = llm_info.get("model", "неизвестно")
+            llm_provider = llm_info.get("provider", "неизвестно")
+            llm_prompt = llm_info.get("system_prompt")
+            print(f"      🤖 LLM использован:")
+            print(f"        - Модель: {llm_model}")
+            print(f"        - Провайдер: {llm_provider}")
+            if llm_prompt:
+                # Обрезаем промт для вывода (первые 200 символов)
+                prompt_preview = llm_prompt[:200].replace("\n", " ")
+                if len(llm_prompt) > 200:
+                    prompt_preview += "..."
+                print(f"        - Промт (превью): {prompt_preview}")
+        
         if final_status == "ready":
             print(f"    ✓ Ингестия завершена успешно")
             return version_id, True, stats
@@ -866,6 +854,22 @@ def process_study(
                 version_id=version_id_result,
             )
         
+        # Извлекаем soa_confidence: сначала из корня summary, потом из detailed
+        summary = stats.get("ingestion_summary", {})
+        soa_conf = summary.get("soa_confidence")
+        if soa_conf is None:
+            soa_conf = (stats.get("detailed", {}) or {}).get("soa", {}).get("confidence")
+        
+        # Извлекаем данные из detailed_stats
+        detailed = stats.get("detailed", {}) or {}
+        topics = detailed.get("topics", {})
+        facts = detailed.get("facts", {})
+        
+        topics_rate = topics.get("mapped_rate", 0.0)
+        facts_total = facts.get("total_extracted", 0)
+        facts_validated = facts.get("validated_count", 0)
+        facts_conflicts = facts.get("conflicting_count", 0)
+        
         study_results.append(
             {
                 "study_code": study_code,
@@ -873,9 +877,13 @@ def process_study(
                 "version": version_label,
                 "status": stats.get("final_status", "failed" if not success else "unknown"),
                 "anchors_count": stats.get("anchors_created", 0),
-                "soa_confidence": (stats.get("detailed", {}) or {}).get("soa", {}).get("confidence"),
+                "soa_confidence": soa_conf,
                 "matched_anchors": stats.get("matched_anchors", 0),
                 "changed_anchors": stats.get("changed_anchors", 0),
+                "topics_rate": topics_rate,
+                "facts_total": facts_total,
+                "facts_validated": facts_validated,
+                "facts_conflicts": facts_conflicts,
                 "processing_time_sec": duration,
                 "version_id": version_id_result,
                 "success": success,
@@ -1064,6 +1072,10 @@ def main() -> None:
         "soa_confidence",
         "matched_anchors",
         "changed_anchors",
+        "topics_rate",
+        "facts_total",
+        "facts_validated",
+        "facts_conflicts",
         "processing_time_sec",
     ]
     with open(summary_path, "w", encoding="utf-8", newline="") as csvfile:
@@ -1095,6 +1107,10 @@ def main() -> None:
             print(f"  Anchors: {row.get('anchors_count', 0)}")
             print(f"  SoA confidence: {row.get('soa_confidence')}")
             print(f"  matched_anchors: {row.get('matched_anchors', 0)}, changed_anchors: {row.get('changed_anchors', 0)}")
+            topics_rate = row.get('topics_rate')
+            if topics_rate is not None:
+                print(f"  Topics rate: {topics_rate}%")
+            print(f"  Facts: {row.get('facts_total', 0)} total, {row.get('facts_validated', 0)} validated, {row.get('facts_conflicts', 0)} conflicts")
             print(f"  processing_time_sec: {row.get('processing_time_sec')}")
     
     if failed > 0:

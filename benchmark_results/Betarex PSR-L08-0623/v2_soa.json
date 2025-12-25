@@ -1,0 +1,751 @@
+{
+  "table_index": 8,
+  "section_path": "План исследования/Общий дизайн и план исследования/Когорты многократного дозирования/Период наблюдения",
+  "visits": [
+    {
+      "visit_id": "V1",
+      "label": "День",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:984e1792ca6e7f71"
+    },
+    {
+      "visit_id": "V2",
+      "label": "Окно визита",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:d8185895b1e039ed"
+    },
+    {
+      "visit_id": "V3",
+      "label": "Информированное согласие",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:9b23cc34c5741692"
+    },
+    {
+      "visit_id": "V4",
+      "label": "Присвоение индивидуального регистрационного номера",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:f8b530165d3964d1"
+    },
+    {
+      "visit_id": "V5",
+      "label": "Выдача карточки добровольца",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:94baf566fa8a3005"
+    },
+    {
+      "visit_id": "V6",
+      "label": "Сбор демографических данных и анамнеза",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:8bbd4d7031a7a3f9"
+    },
+    {
+      "visit_id": "V7",
+      "label": "Физикальный осмотр",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:835cdaa7534f2016"
+    },
+    {
+      "visit_id": "V8",
+      "label": "Рост 1, масса тела, ИМТ",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:512ad14bf6e37b89"
+    },
+    {
+      "visit_id": "V9",
+      "label": "Оценка жизненных показателей",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:e7051bef480f384c"
+    },
+    {
+      "visit_id": "V10",
+      "label": "ЭКГ в 12 отведениях",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:c4ccde76aa26c46b"
+    },
+    {
+      "visit_id": "V11",
+      "label": "Лабораторные исследования:",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:10376ff8f8ebe01a"
+    },
+    {
+      "visit_id": "V12",
+      "label": "- Серологический анализ крови (ВИЧ, гепатит В и С, сифилис)",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:8996e9bcc6ce3f68"
+    },
+    {
+      "visit_id": "V13",
+      "label": "- Тест на содержание наркотических веществ и сильнодействующих лекарственных средств3",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:897f49a4b5197c5b"
+    },
+    {
+      "visit_id": "V14",
+      "label": "- Тест на алкоголь в выдыхаемом воздухе 4",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:03fe40b11fcca774"
+    },
+    {
+      "visit_id": "V15",
+      "label": "- Тест мочи на котинин 5",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:dfcd0bf9ecf230c0"
+    },
+    {
+      "visit_id": "V16",
+      "label": "- Тест на беременность 6",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:07ae70bef46be8e5"
+    },
+    {
+      "visit_id": "V17",
+      "label": "- Общий анализ крови",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b6f599205b35513c"
+    },
+    {
+      "visit_id": "V18",
+      "label": "- Биохимический анализ крови",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:9b25de8fadfde90a"
+    },
+    {
+      "visit_id": "V19",
+      "label": "- Фармакокинетика 7",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:bb3c0a68881f70b8"
+    },
+    {
+      "visit_id": "V20",
+      "label": "- Фармакодинамика (IFNγ стимулированный ex vivo) 8",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:12587648f2d33064"
+    },
+    {
+      "visit_id": "V21",
+      "label": "- Общий анализ мочи",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:40c6115dd5eed7ce"
+    },
+    {
+      "visit_id": "V22",
+      "label": "Оценка критериев включения/ невключения",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:98429d3e29245e8e"
+    },
+    {
+      "visit_id": "V23",
+      "label": "Рандомизация",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:d26f258e1a0e33ee"
+    },
+    {
+      "visit_id": "V24",
+      "label": "Госпитализация",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:6e5eca2f403092e9"
+    },
+    {
+      "visit_id": "V25",
+      "label": "Прием ИП в исследовательском центре",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:207646f87affb7a5"
+    },
+    {
+      "visit_id": "V26",
+      "label": "Регистрация сопутствующей терапии и НЯ",
+      "day": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a167ca1a0e6a11f6"
+    }
+  ],
+  "procedures": [
+    {
+      "proc_id": "P001",
+      "label": "Скрининг",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:95a53f0132534748"
+    },
+    {
+      "proc_id": "P002",
+      "label": "Скрининг",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:670c2112618a5167"
+    },
+    {
+      "proc_id": "P003",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:398382181959bc92"
+    },
+    {
+      "proc_id": "P004",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:6695c93af70a0c01"
+    },
+    {
+      "proc_id": "P005",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:29504d699302a316"
+    },
+    {
+      "proc_id": "P006",
+      "label": "Исследуемая терапия",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:0a5d59dcb604781f"
+    },
+    {
+      "proc_id": "P007",
+      "label": "Наблюдение",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:f7412c5ccc596d1a"
+    },
+    {
+      "proc_id": "P008",
+      "label": "Наблюдение",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:280dc3e2ab0e1028"
+    },
+    {
+      "proc_id": "P009",
+      "label": "Д/З",
+      "category": null,
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:1365e9dc8ad1a883"
+    }
+  ],
+  "matrix": [
+    {
+      "visit_id": "V1",
+      "proc_id": "P001",
+      "value": "Д-14",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:222d17f856e0b71c"
+    },
+    {
+      "visit_id": "V2",
+      "proc_id": "P001",
+      "value": "День -14 -1",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:2c953a1e73f1f358"
+    },
+    {
+      "visit_id": "V3",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:cf0d8ada0256e7f1"
+    },
+    {
+      "visit_id": "V4",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:f4f7eee1d7c36242"
+    },
+    {
+      "visit_id": "V6",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:ffea21f1dd578a44"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a06290108d583671"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b19b7d51ca77124a"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b90c1fe803ce480c"
+    },
+    {
+      "visit_id": "V10",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:af4208286b70d7dd"
+    },
+    {
+      "visit_id": "V12",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:f86ee91863edfe5d"
+    },
+    {
+      "visit_id": "V13",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:8a3ec921972961d0"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b7a00a89a3fc61cf"
+    },
+    {
+      "visit_id": "V16",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:106f086876e015e9"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:953f840001436870"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:f088fcff1fafbec5"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:76bfe3689787b8a0"
+    },
+    {
+      "visit_id": "V22",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:75e33fe0753188be"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P001",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:62aaa5ba1725b48e"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P002",
+      "value": "Д-1",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:0e5c02a0bbdb53d6"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:e1e4f395aab1f92c"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:7ebb2d7a7357d5f4"
+    },
+    {
+      "visit_id": "V13",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a49664131868c1c2"
+    },
+    {
+      "visit_id": "V14",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:dc881b3a719db571"
+    },
+    {
+      "visit_id": "V15",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:ab7bf6b0237db9ad"
+    },
+    {
+      "visit_id": "V16",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:45e278123ac4b29d"
+    },
+    {
+      "visit_id": "V22",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:039b33bcffd91b3a"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P002",
+      "value": "Х (вечер)",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:fc0147a282be17de"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P002",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:d3453e7d6d026416"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P003",
+      "value": "Д0",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:7691ae5272ea8793"
+    },
+    {
+      "visit_id": "V5",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:45a16d9454bc2567"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:4703895ef1824597"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:aea59673b0aa8259"
+    },
+    {
+      "visit_id": "V10",
+      "proc_id": "P003",
+      "value": "Х2",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:4157c26d594c9882"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a505b83db8e67362"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b43b278f254e2c90"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b4db5c37e2062c83"
+    },
+    {
+      "visit_id": "V20",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:aa667b3da6ddff22"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:aff4a6ead81bb95d"
+    },
+    {
+      "visit_id": "V22",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:50945af1903e91c5"
+    },
+    {
+      "visit_id": "V23",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:4bfde602f0b8c249"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:100d909c9721d52f"
+    },
+    {
+      "visit_id": "V25",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:902bdc2261027cd1"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P003",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:c517d9be913d7b97"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P004",
+      "value": "Д1",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:b08923c888d4c0ec"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:99422ae285d5477d"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a9ce83791b172e39"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:e97f2eb9ef3edffc"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:d2b82d5900e2c950"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:bb2ac71a22d5c95d"
+    },
+    {
+      "visit_id": "V20",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:0b526f240874c935"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:7f59460b99e8c2f2"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:ed5ddc793ae1b884"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P004",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:dc8434a501cd3516"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P005",
+      "value": "Д2",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:7917babc338cdf3b"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a561fe34ec36c5bb"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:d0640a3d6d6b0df5"
+    },
+    {
+      "visit_id": "V20",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:27b6a923b90aa5c9"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:96c5b64a325a65dc"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P005",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:fd472ec446aef1c9"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P006",
+      "value": "Д3",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:502104a299a92afb"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:6688b64547667444"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:617c257d576443f4"
+    },
+    {
+      "visit_id": "V20",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:20d5c947edc8b8e3"
+    },
+    {
+      "visit_id": "V24",
+      "proc_id": "P006",
+      "value": "Х (утро)",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:e979d1ceb70a7a1a"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P006",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:e904f3e7e3d305b7"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P007",
+      "value": "Д5",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:991c71dd01f194aa"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:2db2b300efb97c85"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P007",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:885e59c5a0b58880"
+    },
+    {
+      "visit_id": "V1",
+      "proc_id": "P008",
+      "value": "Д7",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:bad5b094f74e00fe"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:42d196d4f4bbdf29"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:0b0fa2d080b17167"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:95d0f5fc0aa9e3ec"
+    },
+    {
+      "visit_id": "V10",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:3219c04d6850ff8a"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:d95ae4e24b470be8"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a7232aa548fc8dbd"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:e85f6e1bdafe99aa"
+    },
+    {
+      "visit_id": "V20",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:4804f556af1f71c7"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:bf4180386c7e5c8b"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P008",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:ea925b219aab5242"
+    },
+    {
+      "visit_id": "V7",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:4555fe009e2d750a"
+    },
+    {
+      "visit_id": "V8",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:a47433852b91f5a0"
+    },
+    {
+      "visit_id": "V9",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:641369fc7c6b4141"
+    },
+    {
+      "visit_id": "V10",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:66741cff073b49df"
+    },
+    {
+      "visit_id": "V17",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:05e6a7143beb4b48"
+    },
+    {
+      "visit_id": "V18",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:5f39eecd8a3ea196"
+    },
+    {
+      "visit_id": "V19",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:eb77ad678d57e7c4"
+    },
+    {
+      "visit_id": "V21",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:05e0f36ad3afa333"
+    },
+    {
+      "visit_id": "V26",
+      "proc_id": "P009",
+      "value": "Х",
+      "anchor_id": "7ad99e44-e955-4b62-b9ca-be5c1b82fbaf:cell:9222f7a0a6348f31"
+    }
+  ],
+  "notes": [],
+  "confidence": 0.9,
+  "warnings": []
+}

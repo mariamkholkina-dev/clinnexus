@@ -182,7 +182,7 @@ class HeadingDetector:
         
         return None
     
-    def detect_by_style(self, paragraph: Paragraph) -> HeadingHit | None:
+    def detect_by_style(self, paragraph: Paragraph, max_depth: int = 3) -> HeadingHit | None:
         """
         Детекция заголовка по стилю.
         
@@ -194,61 +194,82 @@ class HeadingDetector:
         
         Args:
             paragraph: Параграф из python-docx
+            max_depth: Максимальная глубина поиска стилей в иерархии (по умолчанию 3)
+                      Ограничивает количество проверок базовых стилей для оптимизации производительности
             
         Returns:
             HeadingHit или None, если не заголовок
         """
-        style_name = paragraph.style.name if paragraph.style else ""
+        # Ограничение на глубину поиска стилей для оптимизации производительности
+        depth = 0
+        current_style = paragraph.style
         
-        # Проверяем, является ли стиль заголовком (Heading, Title, Заголовок, Название)
-        level = None
+        # Ищем стиль с ограничением глубины
+        while current_style is not None and depth < max_depth:
+            try:
+                style_name = current_style.name if current_style else ""
+            except (AttributeError, TypeError):
+                break
+            
+            # Проверяем, является ли стиль заголовком (Heading, Title, Заголовок, Название)
+            level = None
+            
+            # Английские стили
+            if style_name.startswith('Heading'):
+                # Извлекаем уровень из "Heading 1", "Heading 2", etc.
+                level_str = style_name.replace('Heading', '').strip()
+                if level_str.isdigit():
+                    try:
+                        level = int(level_str)
+                    except ValueError:
+                        pass
+            elif style_name.startswith('Title'):
+                # Извлекаем уровень из "Title 1", "Title 2", etc.
+                level_str = style_name.replace('Title', '').strip()
+                if level_str.isdigit():
+                    try:
+                        level = int(level_str)
+                    except ValueError:
+                        pass
+            # Русские стили
+            elif style_name.startswith('Заголовок'):
+                # Извлекаем уровень из "Заголовок 1", "Заголовок 2", etc.
+                level_str = style_name.replace('Заголовок', '').strip()
+                if level_str.isdigit():
+                    try:
+                        level = int(level_str)
+                    except ValueError:
+                        pass
+            elif style_name.startswith('Название'):
+                # Извлекаем уровень из "Название 1", "Название 2", etc.
+                level_str = style_name.replace('Название', '').strip()
+                if level_str.isdigit():
+                    try:
+                        level = int(level_str)
+                    except ValueError:
+                        pass
+            
+            if level is not None and (1 <= level <= 9):
+                text = paragraph.text.strip()
+                return HeadingHit(
+                    is_heading=True,
+                    level=level,
+                    confidence=0.95,
+                    mode="style",
+                    normalized_title=normalize_title(text),
+                )
+            
+            # Переходим к базовому стилю (если доступен)
+            depth += 1
+            try:
+                if hasattr(current_style, 'base_style') and current_style.base_style is not None:
+                    current_style = current_style.base_style
+                else:
+                    break
+            except (AttributeError, TypeError):
+                break
         
-        # Английские стили
-        if style_name.startswith('Heading'):
-            # Извлекаем уровень из "Heading 1", "Heading 2", etc.
-            level_str = style_name.replace('Heading', '').strip()
-            if level_str.isdigit():
-                try:
-                    level = int(level_str)
-                except ValueError:
-                    pass
-        elif style_name.startswith('Title'):
-            # Извлекаем уровень из "Title 1", "Title 2", etc.
-            level_str = style_name.replace('Title', '').strip()
-            if level_str.isdigit():
-                try:
-                    level = int(level_str)
-                except ValueError:
-                    pass
-        # Русские стили
-        elif style_name.startswith('Заголовок'):
-            # Извлекаем уровень из "Заголовок 1", "Заголовок 2", etc.
-            level_str = style_name.replace('Заголовок', '').strip()
-            if level_str.isdigit():
-                try:
-                    level = int(level_str)
-                except ValueError:
-                    pass
-        elif style_name.startswith('Название'):
-            # Извлекаем уровень из "Название 1", "Название 2", etc.
-            level_str = style_name.replace('Название', '').strip()
-            if level_str.isdigit():
-                try:
-                    level = int(level_str)
-                except ValueError:
-                    pass
-        
-        if level is None or not (1 <= level <= 9):
-            return None
-        
-        text = paragraph.text.strip()
-        return HeadingHit(
-            is_heading=True,
-            level=level,
-            confidence=0.95,
-            mode="style",
-            normalized_title=normalize_title(text),
-        )
+        return None
     
     def detect_by_outline(self, paragraph: Paragraph) -> HeadingHit | None:
         """
@@ -304,6 +325,13 @@ class HeadingDetector:
         """
         text = paragraph.text.strip()
         if not text:
+            return None
+        
+        # Оптимизация: если параграф длиннее 500 символов, сразу возвращаем False
+        # Это экономит время на сложных regex проверках для явно не-заголовков
+        if len(text) > 500:
+            if rejection_counter is not None:
+                rejection_counter["too_long_early"] = rejection_counter.get("too_long_early", 0) + 1
             return None
         
         # Анти-фильтр: если это элемент списка, не считать заголовком
@@ -375,6 +403,19 @@ class HeadingDetector:
         if level > 9:
             return None
         
+        # Анти-фильтр: отклоняем строки оглавления (заканчиваются на табуляцию + число)
+        # Это должно быть проверено для всех уровней, но особенно важно для уровня 1
+        if re.search(r'\t\d+$', text):
+            if rejection_counter is not None:
+                rejection_counter["toc_page_number"] = rejection_counter.get("toc_page_number", 0) + 1
+            if para_index is not None:
+                text_preview = text[:80] if len(text) > 80 else text
+                logger.debug(
+                    f"Отклонён параграф #{para_index} по numbering: строка оглавления (оканчивается на табуляцию + число). "
+                    f"Текст: {text_preview!r}"
+                )
+            return None
+        
         # Для уровня 1 (без точек) требуем дополнительные сигналы заголовка
         if level == 1:
             has_heading_signals = False
@@ -424,6 +465,27 @@ class HeadingDetector:
                     max_font_size = max(font_sizes)
                     if max_font_size > self._doc_stats.median_font_size + 2:
                         has_heading_signals = True
+            
+            # Проверка 5: ключевые слова канонических разделов
+            # Если параграф содержит номер уровня 1 И ключевые слова канонических разделов,
+            # принимаем его как заголовок, даже без других сигналов форматирования
+            if not has_heading_signals and text_after_number:
+                # Ключевые слова канонических разделов (регистронезависимый поиск)
+                canonical_keywords = [
+                    "план", "цель", "цели", "популяция", "препарат", "препараты",
+                    "безопасность", "статистика", "процедур", "процедуры"
+                ]
+                text_lower = text_after_number.lower()
+                has_canonical_keyword = any(keyword in text_lower for keyword in canonical_keywords)
+                
+                if has_canonical_keyword:
+                    has_heading_signals = True
+                    if para_index is not None:
+                        text_preview = text[:80] if len(text) > 80 else text
+                        logger.debug(
+                            f"Принят параграф #{para_index} по numbering (уровень 1): содержит ключевое слово канонического раздела. "
+                            f"Текст: {text_preview!r}"
+                        )
             
             # Если нет дополнительных сигналов, отклоняем
             if not has_heading_signals:

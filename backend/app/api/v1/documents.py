@@ -20,6 +20,8 @@ from app.services.anchor_aligner import AnchorAligner
 from app.db.models.studies import Document, DocumentVersion, Study
 from app.db.models.anchors import Anchor
 from app.db.models.anchor_matches import AnchorMatch
+from app.db.models.sections import TargetSectionMap
+from app.db.models.topics import TopicEvidence
 from app.db.enums import AnchorContentType, IngestionStatus, DocumentLanguage
 from app.schemas.common import SoAResult
 from app.schemas.documents import (
@@ -30,6 +32,7 @@ from app.schemas.documents import (
     UploadResult,
     DiffResult,
     ChangedAnchor,
+    AlignmentDiffItem,
 )
 from app.schemas.anchors import AnchorOut
 from app.db.models.facts import Fact
@@ -503,6 +506,11 @@ async def _build_ingestion_summary(
         if k in base_summary and k not in stable_summary:
             stable_summary[k] = base_summary[k]
 
+    # Сохраняем поля alignment и soa_confidence из base_summary (записываются в корень в ingestion service)
+    for k in ("matched_anchors", "changed_anchors", "soa_confidence"):
+        if k in base_summary:
+            stable_summary[k] = base_summary[k]
+
     # Прокидываем sha256 из модели в summary для трассировки
     if version.source_sha256:
         stable_summary["source_sha256"] = version.source_sha256
@@ -922,6 +930,12 @@ async def start_ingestion(
         
     except Exception as e:
         # Обработка ошибок: processing -> failed
+        # Делаем rollback перед повторными операциями, если транзакция была откачена
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Игнорируем ошибки rollback, если транзакция уже закрыта
+        
         error_message = str(e)
         version.ingestion_status = IngestionStatus.FAILED
         version.ingestion_summary_json = await _build_ingestion_summary(
@@ -994,6 +1008,111 @@ async def list_anchors(
     result = await db.execute(stmt)
     anchors = result.scalars().all()
     return [AnchorOut.model_validate(a) for a in anchors]
+
+
+@router.get(
+    "/document-versions/{version_id}/alignment-diff",
+    response_model=list[AlignmentDiffItem],
+)
+async def get_alignment_diff(
+    version_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[AlignmentDiffItem]:
+    """
+    Возвращает список всех якорей текущей версии, у которых есть пара в предыдущей версии.
+    Данные для страницы Impact Analysis.
+    """
+    # Проверяем существование текущей версии
+    current_version = await db.get(DocumentVersion, version_id)
+    if not current_version:
+        raise NotFoundError("DocumentVersion", str(version_id))
+    
+    # Находим предыдущую версию (сортировка по created_at DESC, где created_at < текущей)
+    stmt_prev = (
+        select(DocumentVersion)
+        .where(
+            DocumentVersion.document_id == current_version.document_id,
+            DocumentVersion.created_at < current_version.created_at,
+        )
+        .order_by(DocumentVersion.created_at.desc())
+        .limit(1)
+    )
+    result_prev = await db.execute(stmt_prev)
+    prev_version = result_prev.scalar_one_or_none()
+    
+    # Если предыдущей версии нет, возвращаем пустой список
+    if not prev_version:
+        return []
+    
+    # Получаем все anchor_matches для этих версий
+    stmt_matches = select(AnchorMatch).where(
+        AnchorMatch.from_doc_version_id == prev_version.id,
+        AnchorMatch.to_doc_version_id == current_version.id,
+    )
+    result_matches = await db.execute(stmt_matches)
+    matches = result_matches.scalars().all()
+    
+    if not matches:
+        return []
+    
+    # Получаем anchor_id из matches для запроса якорей
+    from_anchor_ids = [m.from_anchor_id for m in matches]
+    to_anchor_ids = [m.to_anchor_id for m in matches]
+    
+    # Получаем якоря из предыдущей версии
+    stmt_old_anchors = select(Anchor).where(
+        Anchor.doc_version_id == prev_version.id,
+        Anchor.anchor_id.in_(from_anchor_ids),  # type: ignore
+    )
+    result_old_anchors = await db.execute(stmt_old_anchors)
+    old_anchors_map = {a.anchor_id: a for a in result_old_anchors.scalars().all()}
+    
+    # Получаем якоря из текущей версии
+    stmt_new_anchors = select(Anchor).where(
+        Anchor.doc_version_id == current_version.id,
+        Anchor.anchor_id.in_(to_anchor_ids),  # type: ignore
+    )
+    result_new_anchors = await db.execute(stmt_new_anchors)
+    new_anchors_map = {a.anchor_id: a for a in result_new_anchors.scalars().all()}
+    
+    # Получаем все TargetSectionMap для текущей версии для маппинга anchor_id -> target_section
+    stmt_section_maps = select(TargetSectionMap).where(
+        TargetSectionMap.doc_version_id == current_version.id,
+    )
+    result_section_maps = await db.execute(stmt_section_maps)
+    section_maps = result_section_maps.scalars().all()
+    
+    # Создаем индекс anchor_id -> target_section
+    anchor_to_section: dict[str, str] = {}
+    for section_map in section_maps:
+        if section_map.anchor_ids:
+            for anchor_id in section_map.anchor_ids:
+                anchor_to_section[anchor_id] = section_map.target_section
+    
+    # Формируем результат
+    result_items: list[AlignmentDiffItem] = []
+    for match in matches:
+        old_anchor = old_anchors_map.get(match.from_anchor_id)
+        new_anchor = new_anchors_map.get(match.to_anchor_id)
+        
+        # Пропускаем если якорь не найден (не должно случаться, но на всякий случай)
+        if not old_anchor or not new_anchor:
+            continue
+        
+        # Получаем target_section для нового якоря
+        target_section = anchor_to_section.get(match.to_anchor_id)
+        
+        result_items.append(
+            AlignmentDiffItem(
+                text_old=old_anchor.text_raw,
+                text_new=new_anchor.text_raw,
+                change_score=match.score,
+                is_changed=match.score < 1.0,
+                target_section=target_section,
+            )
+        )
+    
+    return result_items
 
 
 @router.get(
@@ -1109,6 +1228,52 @@ async def get_soa(
     )
 
 
+@router.get(
+    "/document-versions/{version_id}/topics",
+    response_model=list[dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+)
+async def get_topics_evidence(
+    version_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """
+    Получает topic_evidence для версии документа.
+    
+    Возвращает список записей topic_evidence с полями:
+    - id, doc_version_id, topic_key, source_zone, language
+    - anchor_ids, chunk_ids, score, evidence_json, created_at
+    """
+    # Проверяем существование версии
+    version = await db.get(DocumentVersion, version_id)
+    if not version:
+        raise NotFoundError("DocumentVersion", str(version_id))
+    
+    # Получаем все topic_evidence для этой версии
+    stmt = select(TopicEvidence).where(TopicEvidence.doc_version_id == version_id)
+    result = await db.execute(stmt)
+    evidences = result.scalars().all()
+    
+    # Преобразуем в словари для JSON сериализации
+    evidence_list = []
+    for ev in evidences:
+        evidence_dict = {
+            "id": str(ev.id),
+            "doc_version_id": str(ev.doc_version_id),
+            "topic_key": ev.topic_key,
+            "source_zone": ev.source_zone,
+            "language": ev.language.value,
+            "anchor_ids": ev.anchor_ids,
+            "chunk_ids": [str(cid) for cid in ev.chunk_ids],
+            "score": ev.score,
+            "evidence_json": ev.evidence_json,
+            "created_at": ev.created_at.isoformat() if ev.created_at else None,
+        }
+        evidence_list.append(evidence_dict)
+    
+    return evidence_list
+
+
 @router.post(
     "/documents/{doc_id}/versions/{from_version_id}/diff/{to_version_id}",
     response_model=DiffResult,
@@ -1118,7 +1283,7 @@ async def diff_versions(
     doc_id: UUID,
     from_version_id: UUID,
     to_version_id: UUID,
-    min_score: float = Query(0.78, ge=0.0, le=1.0),
+    min_score: float = Query(0.6, ge=0.0, le=1.0),
     db: AsyncSession = Depends(get_db),
 ) -> DiffResult:
     """

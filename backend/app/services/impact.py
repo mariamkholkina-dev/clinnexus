@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
-from app.db.enums import ImpactStatus, RecommendedAction, TaskStatus, TaskType
+from app.db.enums import DocumentType, ImpactStatus, RecommendedAction, TaskStatus, TaskType
 from app.db.models.anchors import Anchor
 from app.db.models.anchor_matches import AnchorMatch
 from app.db.models.change import ChangeEvent, ImpactItem, Task
 from app.db.models.facts import Fact, FactEvidence
 from app.db.models.generation import GeneratedTargetSection, GenerationRun
-from app.db.models.studies import Document
+from app.db.models.studies import Document, DocumentVersion
 from app.db.models.topics import TopicEvidence
 from app.schemas.impact import ImpactItemOut
 from app.services.anchor_aligner import AnchorAligner
@@ -31,7 +32,7 @@ class ImpactService:
         Вычисляет воздействие изменения документа на другие документы.
         
         Использует anchor_matches для определения измененных якорей и находит
-        затронутые факты и секции.
+        затронутые секции, которые ссылаются на эти якоря.
         """
         logger.info(f"Вычисление воздействия для change_event {change_event_id}")
 
@@ -40,23 +41,68 @@ class ImpactService:
         if not change_event:
             raise ValueError(f"ChangeEvent {change_event_id} не найден")
 
-        # Шаг 1: Получаем AnchorMatch со score < 0.95 (изменённые/удалённые)
-        stmt = select(AnchorMatch).where(
+        # Получаем версию документа для получения version_label
+        to_version = await self.db.get(DocumentVersion, change_event.to_version_id)
+        if not to_version:
+            raise ValueError(f"DocumentVersion {change_event.to_version_id} не найден")
+        version_label = to_version.version_label
+
+        # Шаг 1: Получаем все AnchorMatch для этого change_event
+        stmt_matches = select(AnchorMatch).where(
             AnchorMatch.from_doc_version_id == change_event.from_version_id,
             AnchorMatch.to_doc_version_id == change_event.to_version_id,
-            AnchorMatch.score < 0.95,
         )
-        result = await self.db.execute(stmt)
-        matches = result.scalars().all()
+        result_matches = await self.db.execute(stmt_matches)
+        all_matches = result_matches.scalars().all()
 
-        if not matches:
-            logger.info("Вычисление воздействия: нет изменённых anchor_matches")
+        # Карта from_anchor_id -> (score, to_anchor_id)
+        anchor_matches_map: dict[str, tuple[float, str]] = {
+            m.from_anchor_id: (m.score, m.to_anchor_id) for m in all_matches
+        }
+
+        # Получаем все anchor_id из старой версии для проверки отсутствующих
+        stmt_old_anchors = select(Anchor.anchor_id).where(
+            Anchor.doc_version_id == change_event.from_version_id
+        )
+        result_old_anchors = await self.db.execute(stmt_old_anchors)
+        all_old_anchor_ids = {row[0] for row in result_old_anchors}
+
+        # Определяем измененные и удаленные anchor_id
+        changed_anchor_ids: set[str] = set()  # anchor_id с score < 0.95
+        deleted_anchor_ids: set[str] = set()  # anchor_id из v1, отсутствующие в AnchorMatch
+
+        for anchor_id in all_old_anchor_ids:
+            if anchor_id in anchor_matches_map:
+                score, _ = anchor_matches_map[anchor_id]
+                if score < 0.95:
+                    changed_anchor_ids.add(anchor_id)
+            else:
+                # Якорь был в v1, но отсутствует в AnchorMatch - значит удален
+                deleted_anchor_ids.add(anchor_id)
+
+        affected_anchor_ids = changed_anchor_ids | deleted_anchor_ids
+
+        if not affected_anchor_ids:
+            logger.info("Нет измененных или удаленных якорей")
             return []
 
-        # Карта anchor_id -> score
-        changed_anchors: dict[str, float] = {m.from_anchor_id: m.score for m in matches}
+        # Получаем информацию о якорях для создания описаний
+        stmt_anchor_info = select(
+            Anchor.anchor_id,
+            Anchor.section_path,
+            Anchor.ordinal,
+            Anchor.content_type,
+        ).where(Anchor.doc_version_id == change_event.from_version_id)
+        result_anchor_info = await self.db.execute(stmt_anchor_info)
+        anchor_info_map: dict[str, dict[str, Any]] = {}
+        for row in result_anchor_info:
+            anchor_info_map[row[0]] = {
+                "section_path": row[1],
+                "ordinal": row[2],
+                "content_type": row[3].value if hasattr(row[3], "value") else str(row[3]),
+            }
 
-        # Шаг 2: Находим GeneratedTargetSection, которые ссылаются на старые anchor_ids
+        # Шаг 2: Находим все GeneratedTargetSection для этого исследования
         stmt_sections = (
             select(GeneratedTargetSection, GenerationRun)
             .join(GenerationRun, GeneratedTargetSection.generation_run_id == GenerationRun.id)
@@ -65,53 +111,106 @@ class ImpactService:
         sec_res = await self.db.execute(stmt_sections)
         rows = sec_res.all()
 
-        impact_items: list[ImpactItem] = []
+        # Группируем изменения по секциям
+        # Структура: {(target_doc_type, target_section): [список измененных якорей]}
+        sections_changes: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
         for section, gen_run in rows:
-            anchors_in_section = self._extract_anchor_ids_from_artifacts(section.artifacts_json)
-            impacted = anchors_in_section & set(changed_anchors.keys())
-            if not impacted:
-                continue
+            # Извлекаем все anchor_id из artifacts_json (используем существующий метод)
+            artifacts_json = section.artifacts_json if isinstance(section.artifacts_json, dict) else {}
+            section_anchor_ids = self._extract_anchor_ids_from_artifacts(artifacts_json)
 
-            # Создаём ImpactItem для каждого затронутого anchor_id
-            for aid in impacted:
-                impact_item = ImpactItem(
-                    change_event_id=change_event_id,
-                    affected_doc_type=gen_run.target_doc_type,
-                    affected_target_section=gen_run.target_section,
-                    reason_json={
-                        "type": "source_changed",
-                        "anchor_id": aid,
-                        "change_score": changed_anchors.get(aid, 0.0),
-                    },
-                    recommended_action=RecommendedAction.MANUAL_REVIEW,
-                    status=ImpactStatus.PENDING,
-                )
-                impact_items.append(impact_item)
-                self.db.add(impact_item)
+            # Находим пересечение с измененными/удаленными якорями
+            affected_in_section = section_anchor_ids & affected_anchor_ids
 
-        # Создаём Task для пользователя
-        if impact_items:
+            if affected_in_section:
+                section_key = (gen_run.target_doc_type.value, gen_run.target_section)
+                if section_key not in sections_changes:
+                    sections_changes[section_key] = []
+
+                # Формируем описания изменений для каждого якоря
+                for anchor_id in affected_in_section:
+                    anchor_info = anchor_info_map.get(anchor_id, {})
+                    section_path = anchor_info.get("section_path", "неизвестный раздел")
+                    ordinal = anchor_info.get("ordinal", 0)
+                    content_type = anchor_info.get("content_type", "p")
+
+                    if anchor_id in changed_anchor_ids:
+                        score, _ = anchor_matches_map[anchor_id]
+                        change_percent = int((1 - score) * 100)
+                        # Формируем описание в зависимости от типа контента
+                        if content_type == "li":
+                            description = f"Изменился текст пункта №{ordinal} в разделе {section_path} (изменение на {change_percent}%)"
+                        elif content_type == "p":
+                            description = f"Изменился текст параграфа в разделе {section_path} (изменение на {change_percent}%)"
+                        else:
+                            description = f"Изменился текст элемента в разделе {section_path} (изменение на {change_percent}%)"
+                    else:  # deleted
+                        if content_type == "li":
+                            description = f"Удален пункт №{ordinal} в разделе {section_path}"
+                        elif content_type == "p":
+                            description = f"Удален параграф в разделе {section_path}"
+                        else:
+                            description = f"Удален элемент в разделе {section_path}"
+
+                    sections_changes[section_key].append({
+                        "anchor_id": anchor_id,
+                        "section_path": section_path,
+                        "description": description,
+                        "ordinal": ordinal,
+                        "content_type": content_type,
+                        "is_deleted": anchor_id in deleted_anchor_ids,
+                    })
+
+        # Шаг 3: Создаем ImpactItem для каждой затронутой секции
+        impact_items: list[ImpactItem] = []
+        affected_sections: set[tuple[str, str]] = set()
+
+        for (target_doc_type_str, target_section), changes in sections_changes.items():
+            target_doc_type = DocumentType(target_doc_type_str)
+
+            # Создаем один ImpactItem на секцию со списком изменений
+            impact_item = ImpactItem(
+                change_event_id=change_event_id,
+                affected_doc_type=target_doc_type,
+                affected_target_section=target_section,
+                reason_json={
+                    "type": "source_changed",
+                    "changed_anchors": changes,
+                    "total_changed": len(changes),
+                },
+                recommended_action=RecommendedAction.REGENERATE_DRAFT,
+                status=ImpactStatus.PENDING,
+            )
+            impact_items.append(impact_item)
+            self.db.add(impact_item)
+            affected_sections.add((target_doc_type_str, target_section))
+
+        # Шаг 4: Создаем системную задачу Task для пользователя
+        if affected_sections:
             task = Task(
                 study_id=change_event.study_id,
                 type=TaskType.REVIEW_IMPACT,
                 status=TaskStatus.OPEN,
                 payload_json={
-                    "title": "Review impact on CSR sections due to Protocol v2 update",
+                    "title": f"Протокол обновлен до {version_label}. Требуется проверить изменения в затронутых секциях",
                     "change_event_id": str(change_event_id),
-                    "impact_items_count": len(impact_items),
+                    "version_label": version_label,
+                    "affected_sections": [
+                        {"doc_type": dt, "section": s} for dt, s in affected_sections
+                    ],
                 },
             )
             self.db.add(task)
             logger.info(
-                f"Создана задача review_impact для change_event {change_event_id}, "
-                f"затронуто элементов: {len(impact_items)}"
+                f"Создана задача review_impact для change_event {change_event_id}"
             )
 
         await self.db.commit()
 
         logger.info(
-            f"Вычисление воздействия завершено: {len(impact_items)} элементов"
+            f"Вычисление воздействия завершено: {len(impact_items)} элементов, "
+            f"{len(affected_sections)} затронутых секций"
         )
         return [ImpactItemOut.model_validate(item) for item in impact_items]
 

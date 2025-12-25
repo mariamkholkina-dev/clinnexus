@@ -1,4 +1,4 @@
-## STATUS REPORT (на дату: 2025-12-23)
+## STATUS REPORT (на дату: 2025-12-24)
 
 ### 1) Стек и запуск (команды)
 
@@ -11,7 +11,7 @@
 
 **Запуск dev через Docker:**
 - `docker-compose up --build` (поднимает db/backend/frontend) — `Makefile`, `docker-compose.yml`
-- Миграции: `docker-compose run --rm backend alembic -c /app/db/alembic.ini upgrade head` — `Makefile`
+- Миграции: `docker-compose run --rm backend alembic -c /app/alembic.ini upgrade head` — `Makefile`
 - Seed: `docker-compose run --rm backend python -m app.scripts.seed` — `Makefile`, `backend/app/scripts/seed.py`
 
 **Локальный запуск backend (без Docker):**
@@ -67,6 +67,13 @@
 - `GET /api/passport-tuning/sections?doc_type=...` — дерево taxonomy для doc_type  
 - `POST /api/passport-tuning/cluster-to-topic-mapping` — загрузка маппинга cluster_id -> topic_key для doc_version  
   - Файл: `backend/app/api/v1/passport_tuning.py`
+
+**Topics API (по коду):**
+- `GET /api/topics?workspace_id=...&is_active=...` — список топиков (по умолчанию только активные)  
+- `GET /api/topics/{topic_key}?workspace_id=...&include_profile=...` — детальная информация о топике  
+- `GET /api/cluster-assignments?doc_version_id=...` — список привязок кластеров к топикам для версии документа  
+- `GET /api/cluster-assignments/{cluster_id}?doc_version_id=...` — привязка кластера к топику по doc_version_id и cluster_id  
+  - Файл: `backend/app/api/v1/topics.py`
 
 **Generation / Conflicts / Impact / Tasks (по коду):**
 - `POST /api/generate/section` — генерация секции (MVP: детерминированный черновик + QC)  
@@ -200,7 +207,7 @@
 - Реализован детектор таблицы SoA по скорингу (keywords + структура + маркеры X/✓ + штрафы), извлечение visits/procedures/matrix, создание cell anchors + запись в facts (`fact_type="soa"`, keys: `visits|procedures|matrix`) + evidence.  
   - Файлы: `backend/app/services/soa_extraction.py`, использование: `backend/app/services/ingestion/__init__.py`, чтение API: `backend/app/api/v1/documents.py`
 
-### 8) Закрытие MVP шагов 1–6 (sweep)
+### 9) Закрытие MVP шагов 1–6 (sweep)
 
 - **Step 1/2 (модели/миграции/enums)**: Alembic `env.py` импортирует `app.db.models`, enum `anchor_content_type` включает `cell`, `IngestionStatus` соответствует state machine.
 - **Step 3 (lifecycle + summary)**: `ingestion_summary_json` теперь всегда заполняется и имеет стабильную схему ключей `{anchors_created, soa_found, soa_facts_written, chunks_created, mapping_status, warnings, errors}` (доп. поля могут присутствовать).
@@ -268,14 +275,19 @@
   - Используется `TopicMappingService` для создания маппингов и `TopicEvidenceBuilder` для построения доказательств
 
 **Facts (кроме SoA):**
-- `FactExtractionService.extract_and_upsert(...)` реализован как **rules-first** извлечение (без LLM):
-  - Извлекает 3 типа фактов: `protocol_meta/protocol_version`, `protocol_meta/amendment_date`, `population/planned_n_total`
-  - Поддерживает RU/EN паттерны (regex-based)
-  - Создаёт факты со статусом `extracted` или `needs_review` (если не найдено)
+- `FactExtractionService.extract_and_upsert(...)` реализован как **rules-first** извлечение:
+  - Извлекает факты через regex-правила из `fact_extraction_rules.py` (поддержка RU/EN паттернов)
+  - Поддерживает приоритеты правил, предпочтительные source_zones и топики
+  - Создаёт факты со статусом `extracted`, `needs_review` или `validated` (после LLM-нормализации)
   - Evidence ссылается только на реальные `anchor_id` (не фиктивные)
   - Идемпотентность: при повторном прогоне заменяет evidence для существующих фактов
   - Интегрирован в ingest пайплайн (вызывается после SoA extraction, перед section mapping)
-  - Файлы: `backend/app/services/fact_extraction.py`, `backend/app/services/ingestion/__init__.py` (строка 336-345)
+  - **ValueNormalizer**: GxP-совместимый двойной контроль (Double Check) для сложных значений:
+    - Автоматически определяет сложные значения (несколько чисел, длинные фразы, вложенные структуры)
+    - Использует LLM для нормализации сложных значений (требует `secure_mode=true`)
+    - Сравнивает результат LLM с regex-результатом
+    - Если совпадают → статус `validated`, если нет → `conflicting`
+  - Файлы: `backend/app/services/fact_extraction.py`, `backend/app/services/fact_extraction_rules.py`, `backend/app/services/value_normalizer.py`, `backend/app/services/ingestion/__init__.py`
 
 **Generation:**
 - `GenerationService.generate_section(...)` реализован как MVP-каркас:
@@ -300,10 +312,46 @@
   - Файлы: `backend/app/services/retrieval.py`, индексы: `backend/alembic/versions/0002_enums_and_vector.py`
 
 **Impact (change management):**
-- `ImpactService.compute_impact(...)` сейчас **заглушка** (возвращает `[]`), несмотря на наличие таблиц `change_events` и `impact_items`.  
-  - Файлы: `backend/app/services/impact.py`
+- `ImpactService.compute_impact(...)` **реализован**: вычисляет воздействие изменений документов на основе `anchor_matches`, находит затронутые `GeneratedTargetSection`, создаёт `ImpactItem` и системные задачи `Task` для пользователя.  
+  - Использует `AnchorAligner` для определения измененных якорей (score < 0.95 считается изменением)  
+  - Находит удаленные якоря (отсутствующие в `AnchorMatch`)  
+  - Извлекает `anchor_id` из `artifacts_json` сгенерированных секций  
+  - Создает `ImpactItem` для каждой затронутой секции с описанием изменений  
+  - Автоматически создает `Task` типа `REVIEW_IMPACT` для пользователя  
+  - Файлы: `backend/app/services/impact.py`, `backend/app/services/anchor_aligner.py`
 
-### 7) TODO (ближайшие 3 шага)
+### 7) Новые сервисы и компоненты
+
+**TopicMappingService:**
+- Сервис для маппинга блоков заголовков на топики для версии документа
+- Использует `HeadingBlockBuilder` для построения блоков заголовков из anchors
+- Создает `heading_block_topic_assignments` для прямого маппинга блоков на топики
+- Файлы: `backend/app/services/topic_mapping.py`, `backend/app/services/heading_block_builder.py`
+
+**TopicEvidenceBuilder:**
+- Строит агрегированные доказательства для топиков из `heading_block_topic_assignments`
+- Создает `topic_evidence` с anchor_ids, chunk_ids, source_zone, language
+- Файлы: `backend/app/services/topic_evidence_builder.py`
+
+**HeadingBlockBuilder:**
+- Строит блоки заголовков динамически из anchors для doc_version
+- Генерирует стабильный `heading_block_id` для каждого блока
+- Используется для прямого маппинга блоков на топики (миграция 0021)
+- Файлы: `backend/app/services/heading_block_builder.py`
+
+**ValueNormalizer:**
+- GxP-совместимый двойной контроль (Double Check) для извлеченных значений фактов
+- Автоматически определяет сложные значения и использует LLM для нормализации
+- Сравнивает результат LLM с regex-результатом для валидации
+- Требует `secure_mode=true` и настроенный LLM клиент
+- Файлы: `backend/app/services/value_normalizer.py`, `backend/app/services/llm_client.py`
+
+**TopicRepository и ClusterAssignmentRepository:**
+- Репозитории для работы с топиками и привязками кластеров
+- Используются в Topics API для получения списков и детальной информации
+- Файлы: `backend/app/services/topic_repository.py`
+
+### 8) TODO (ближайшие 3 шага)
 
 1) **Починить Step 6.5 smoke-check без ослабления MVP-ограничений**:
    - Вариант A: перед запуском smoke-check поднимать сидер `seed_section_contracts.py` (и убрать POST в smoke-check), либо добавить отдельный "test-only" эндпоинт/флаг для создания контрактов в dev.  
@@ -311,10 +359,9 @@
 2) **Включить/настроить LLM assist и стабилизировать контрактные ожидания**:
    - Настроить `SECURE_MODE=true`, `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`; убедиться, что `SectionContract.retrieval_recipe_json` v2 соответствует документному языку (RU/EN/MIXED).  
    - Файлы: `backend/app/core/config.py`, `backend/app/services/section_mapping_assist.py`, `backend/app/services/llm_client.py`, `contracts/seed/*.json`
-3) **Довести retrieval/impact до рабочего контура**:
+3) **Довести retrieval до рабочего контура**:
    - Реализовать `RetrievalService` (embed query + pgvector search), затем переключить generation на retrieval вместо чистого `target_section_maps`/anchors.  
-   - Реализовать `ImpactService.compute_impact(...)` для вычисления воздействия изменений документов на основе diff и dependency graph.  
-   - Расширить `FactExtractionService` для извлечения дополнительных фактов по контрактам (сейчас только 3 базовых: protocol_version, amendment_date, planned_n_total).  
-   - Файлы: `backend/app/services/retrieval.py`, `backend/app/services/impact.py`, `backend/app/services/generation.py`, `backend/app/services/fact_extraction.py`, `backend/app/services/lean_passport.py`
+   - Расширить `FactExtractionService` для извлечения дополнительных фактов по контрактам (сейчас базовые факты извлекаются через rules-first подход).  
+   - Файлы: `backend/app/services/retrieval.py`, `backend/app/services/generation.py`, `backend/app/services/fact_extraction.py`, `backend/app/services/lean_passport.py`
 
 

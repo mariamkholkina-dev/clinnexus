@@ -85,3 +85,13 @@ class DiffResult(BaseModel):
     changed: list[ChangedAnchor]
     added: list[str]  # anchor_ids
     removed: list[str]  # anchor_ids
+
+
+class AlignmentDiffItem(BaseModel):
+    """Элемент diff для Impact Analysis: якорь с парой в предыдущей версии."""
+    
+    text_old: str
+    text_new: str
+    change_score: float
+    is_changed: bool
+    target_section: str | None

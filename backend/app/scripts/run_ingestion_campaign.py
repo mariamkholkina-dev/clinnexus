@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
@@ -26,14 +26,17 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.storage import StoredFile, sanitize_filename
 from app.db.enums import (
+    AnchorContentType,
     DocumentLanguage,
     DocumentLifecycleStatus,
     DocumentType,
     IngestionStatus,
     StudyStatus,
 )
-from app.db.models.studies import Document, DocumentVersion, Study
+from app.db.models.anchors import Anchor
 from app.db.models.ingestion_runs import IngestionRun
+from app.db.models.studies import Document, DocumentVersion, Study
+from app.db.models.topics import HeadingBlockTopicAssignment
 from app.services.ingestion import IngestionService
 
 # Разрешенные расширения файлов
@@ -363,6 +366,7 @@ async def run_campaign(
     soa_found_count = 0
     unknown_rates: list[float] = []
     mapping_coverages: list[float] = []
+    topics_rates: list[float] = []
     warning_counts: defaultdict[str, int] = defaultdict(int)
     error_counts: defaultdict[str, int] = defaultdict(int)
     section_failures: defaultdict[str, int] = defaultdict(int)
@@ -372,7 +376,7 @@ async def run_campaign(
     
     async def process_doc_version(dv: DocumentVersion) -> dict[str, Any]:
         """Обрабатывает один документ."""
-        nonlocal soa_found_count, unknown_rates, mapping_coverages, warning_counts, error_counts, section_failures
+        nonlocal soa_found_count, unknown_rates, mapping_coverages, topics_rates, warning_counts, error_counts, section_failures
         
         # Сохраняем id до возможной ошибки, чтобы использовать в except блоке
         dv_id = str(dv.id)
@@ -408,11 +412,42 @@ async def run_campaign(
             soa_found = soa_metrics.get("found", False)
             needs_review = quality.get("needs_review", False)
             
+            # Рассчитываем topics_rate: отношение блоков с назначенным топиком 
+            # к общему количеству блоков (HeadingBlocks) в версии документа
+            topics_rate = None
+            try:
+                # Общее количество HeadingBlocks в версии документа
+                # = количество anchors с content_type='hdr' (каждый HDR anchor создает один heading block)
+                total_blocks_stmt = select(func.count(Anchor.id)).where(
+                    Anchor.doc_version_id == dv_uuid,
+                    Anchor.content_type == AnchorContentType.HDR
+                )
+                total_blocks_result = await db.execute(total_blocks_stmt)
+                total_blocks = total_blocks_result.scalar() or 0
+                
+                if total_blocks > 0:
+                    # Количество уникальных HeadingBlocks с назначенным топиком
+                    # (считаем уникальные heading_block_id из heading_block_topic_assignments)
+                    assigned_blocks_stmt = select(func.count(func.distinct(HeadingBlockTopicAssignment.heading_block_id))).where(
+                        HeadingBlockTopicAssignment.doc_version_id == dv_uuid
+                    )
+                    assigned_blocks_result = await db.execute(assigned_blocks_stmt)
+                    assigned_blocks = assigned_blocks_result.scalar() or 0
+                    
+                    topics_rate = assigned_blocks / total_blocks
+                else:
+                    topics_rate = 0.0
+            except Exception as e:
+                logger.warning(f"Ошибка при расчете topics_rate для {dv_id}: {e}")
+                topics_rate = None
+            
             # Собираем статистику
             if soa_found:
                 soa_found_count += 1
             unknown_rates.append(unknown_rate)
             mapping_coverages.append(mapping_coverage)
+            if topics_rate is not None:
+                topics_rates.append(topics_rate)
             
             # Подсчитываем предупреждения и ошибки
             for warning in ingestion_run.warnings_json if ingestion_run else []:
@@ -433,6 +468,7 @@ async def run_campaign(
                 "unknown_rate": unknown_rate,
                 "soa_found": soa_found,
                 "mapping_coverage": mapping_coverage,
+                "topics_rate": topics_rate,
                 "facts_total": facts_metrics.get("total", 0),
                 "missing_required_count": len(facts_metrics.get("missing_required", [])),
                 "conflicting_count": facts_metrics.get("conflicting_count", 0),
@@ -448,6 +484,7 @@ async def run_campaign(
                 "unknown_rate": None,
                 "soa_found": False,
                 "mapping_coverage": None,
+                "topics_rate": None,
                 "facts_total": 0,
                 "missing_required_count": 0,
                 "conflicting_count": 0,
@@ -481,6 +518,8 @@ async def run_campaign(
         "unknown_rate_above_25pct": sum(1 for r in unknown_rates if r > 0.25),
         "avg_mapping_coverage": sum(mapping_coverages) / len(mapping_coverages) if mapping_coverages else 0.0,
         "mapping_coverage_below_75pct": sum(1 for c in mapping_coverages if c < 0.75),
+        "avg_topics_rate": sum(topics_rates) / len(topics_rates) if topics_rates else 0.0,
+        "topics_rate_below_50pct": sum(1 for r in topics_rates if r < 0.50),
         "top_warnings": dict(sorted(warning_counts.items(), key=lambda x: x[1], reverse=True)[:20]),
         "top_errors": dict(sorted(error_counts.items(), key=lambda x: x[1], reverse=True)[:20]),
         "section_failures": dict(section_failures),

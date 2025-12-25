@@ -4,13 +4,71 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, TypeDecorator
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.base import Base
 from app.db.enums import ConflictSeverity, ConflictStatus
+
+
+class ConflictSeverityType(TypeDecorator):
+    """TypeDecorator для правильной конвертации ConflictSeverity enum в значение строки."""
+
+    impl = PG_ENUM
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(
+            ConflictSeverity,
+            name="conflict_severity",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, ConflictSeverity):
+            return value.value
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return ConflictSeverity(value)
+
+
+class ConflictStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации ConflictStatus enum в значение строки."""
+
+    impl = PG_ENUM
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(
+            ConflictStatus,
+            name="conflict_status",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в значение строки при сохранении."""
+        if value is None:
+            return None
+        if isinstance(value, ConflictStatus):
+            return value.value
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Конвертируем значение строки обратно в enum при чтении."""
+        if value is None:
+            return None
+        return ConflictStatus(value)
 
 
 class Conflict(Base):
@@ -26,11 +84,11 @@ class Conflict(Base):
     )
     conflict_type: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[ConflictSeverity] = mapped_column(
-        Enum(ConflictSeverity, name="conflict_severity", native_enum=True),
+        ConflictSeverityType(),
         nullable=False,
     )
     status: Mapped[ConflictStatus] = mapped_column(
-        Enum(ConflictStatus, name="conflict_status", native_enum=True),
+        ConflictStatusType(),
         nullable=False,
     )
     title: Mapped[str] = mapped_column(Text, nullable=False)

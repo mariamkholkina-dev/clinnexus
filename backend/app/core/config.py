@@ -10,6 +10,7 @@ class LLMProvider(str, Enum):
     AZURE_OPENAI = "azure_openai"
     OPENAI_COMPATIBLE = "openai_compatible"
     LOCAL = "local"
+    YANDEXGPT = "yandexgpt"
 
 
 # Определяем путь к .env файлу относительно расположения config.py
@@ -44,10 +45,10 @@ class Settings(BaseSettings):
 
     # LLM Assist Configuration
     secure_mode: bool = False  # Если False, LLM вызовы запрещены
-    llm_provider: LLMProvider | None = None  # azure_openai|openai_compatible|local
+    llm_provider: LLMProvider | None = None  # azure_openai|openai_compatible|local|yandexgpt
     llm_base_url: str | None = None
     llm_api_key: str | None = None
-    llm_model: str = "gpt-4o-mini"
+    llm_model: str = "gpt-4o-mini"  # Для YandexGPT: yandexgpt/latest или yandexgpt-pro/latest
     llm_temperature: float = 0.0
     # Для ассиста payload может быть довольно большим (headings + contracts),
     # поэтому даём провайдеру больше времени, чем "обычный" чат.

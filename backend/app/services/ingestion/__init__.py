@@ -11,12 +11,14 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.logging import logger
-from app.db.enums import DocumentType, EvidenceRole, FactStatus, IngestionStatus
+from app.db.enums import DocumentType, EvidenceRole, FactStatus, IngestionStatus, SectionMapStatus
 from app.db.models.anchors import Anchor, Chunk
 from app.db.models.audit import AuditLog
 from app.db.models.facts import Fact, FactEvidence
 from app.db.models.ingestion_runs import IngestionRun
+from app.db.models.sections import TargetSectionContract, TargetSectionMap
 from app.db.models.studies import Document, DocumentVersion
 from app.services.anchor_aligner import AnchorAligner
 from app.services.ingestion.docx_ingestor import DocxIngestor
@@ -26,9 +28,11 @@ from app.services.ingestion.quality_gate import QualityGate
 from app.services.fact_extraction import FactExtractionService
 from app.services.chunking import ChunkingService
 from app.services.section_mapping import SectionMappingService
+from app.services.section_mapping_assist import SectionMappingAssistService
 from app.services.soa_extraction import SoAExtractionService
 from app.services.heading_clustering import HeadingClusteringService
 from app.services.topic_mapping import TopicMappingService
+from app.services.fact_consistency import FactConsistencyService
 
 
 class IngestionResult:
@@ -163,6 +167,8 @@ class IngestionService:
         docx_summary: dict[str, Any] | None = None
         
         alignment_summary: dict[str, Any] | None = None
+        conflicts_count = 0
+        llm_info: dict[str, Any] | None = None
 
         try:
             # Re-ingest: удаляем существующие anchors и facts для этого doc_version
@@ -311,6 +317,7 @@ class IngestionService:
                             Fact.fact_key.in_(["visits", "procedures", "matrix"]),
                         )
                     )
+                    await self.db.flush()  # Применяем удаление перед созданием новых фактов
 
                     # Создаём факты для visits
                     if soa_result.visits:
@@ -421,36 +428,49 @@ class IngestionService:
                 await metrics_collector.collect_chunk_metrics()
 
                 # Шаг 6.1: Выравнивание якорей с предыдущей версией документа (если есть)
-                # Ищем предыдущую версию этого же документа по document_id и effective_date
+                # Ищем предыдущую версию этого же документа по document_id и effective_date (или created_at, если effective_date NULL)
+                prev_version = None
                 if doc_version.effective_date is not None:
+                    # Если effective_date задан, ищем по effective_date
                     prev_version_stmt = (
                         select(DocumentVersion)
                         .where(
                             DocumentVersion.document_id == doc_version.document_id,
+                            DocumentVersion.id != doc_version_id,
                             DocumentVersion.effective_date.isnot(None),
                             DocumentVersion.effective_date < doc_version.effective_date,
                         )
                         .order_by(DocumentVersion.effective_date.desc())
                     )
-                    prev_version_result = await self.db.execute(prev_version_stmt)
-                    prev_version = prev_version_result.scalars().first()
+                else:
+                    # Если effective_date не задан (NULL), используем created_at для поиска
+                    prev_version_stmt = (
+                        select(DocumentVersion)
+                        .where(
+                            DocumentVersion.document_id == doc_version.document_id,
+                            DocumentVersion.id != doc_version_id,
+                            DocumentVersion.created_at < doc_version.created_at,
+                        )
+                        .order_by(DocumentVersion.created_at.desc())
+                    )
+                
+                prev_version_result = await self.db.execute(prev_version_stmt)
+                prev_version = prev_version_result.scalars().first()
 
-                    if prev_version is not None:
-                        logger.info(
-                            "Найдена предыдущая версия документа для выравнивания якорей: "
-                            f"{prev_version.id} -> {doc_version_id}"
-                        )
-                        aligner = AnchorAligner(self.db)
-                        align_stats = await aligner.align(prev_version.id, doc_version_id)
-                        alignment_summary = {
-                            "matched_anchors": align_stats.matched,
-                            "changed_anchors": align_stats.changed,
-                        }
-                    else:
-                        logger.info(
-                            "Предыдущая версия документа для выравнивания якорей не найдена "
-                            f"(document_id={doc_version.document_id}, effective_date={doc_version.effective_date})"
-                        )
+                if prev_version is not None:
+                    logger.debug(f"DEBUG: Finding previous version for doc {document.id}. Current version date: {doc_version.effective_date}")
+                    # Убеждаемся, что все якоря текущей версии доступны в БД для Aligner
+                    await self.db.flush()
+                    logger.info(f"Aligning with previous version: {prev_version.id}")
+                    aligner = AnchorAligner(self.db)
+                    align_stats = await aligner.align(prev_version.id, doc_version_id)
+                    logger.debug(f"DEBUG: Alignment stats - Matched: {align_stats.matched}, Changed: {align_stats.changed}")
+                    alignment_summary = {
+                        "matched_anchors": align_stats.matched,
+                        "changed_anchors": align_stats.changed,
+                    }
+                else:
+                    logger.info("No previous version found for alignment")
 
                 # Шаг 5.5: Rules-first извлечение фактов (после сохранения anchors и завершения SoA)
                 metrics_collector.start_timing("fact_extraction")
@@ -466,10 +486,33 @@ class IngestionService:
                 metrics_collector.end_timing("fact_extraction")
                 
                 # Собираем метрики по фактам
+                # Используем факты из результата извлечения, так как они могут быть еще не закоммичены
+                # Но также делаем запрос к базе для полноты картины
                 await metrics_collector.collect_facts_metrics(str(study_id))
+                # Если факты были извлечены, но не попали в метрики (из-за flush), обновляем метрики
+                if facts_count > 0 and metrics_collector.metrics.facts.total == 0:
+                    logger.warning(
+                        f"Факты извлечены ({facts_count}), но не найдены в БД при сборе метрик. "
+                        f"Используем данные из результата извлечения."
+                    )
+                    metrics_collector.metrics.facts.total = facts_count
                 # Проверяем обязательные факты
                 # QualityGate уже импортирован на верхнем уровне
                 metrics_collector.check_required_facts(QualityGate.REQUIRED_FACTS)
+                
+                # Шаг 5.6: Проверка согласованности фактов
+                metrics_collector.start_timing("fact_consistency_check")
+                logger.info(f"Запуск проверки согласованности фактов для study_id={study_id}")
+                consistency_service = FactConsistencyService(self.db)
+                conflicts = await consistency_service.check_study_consistency(study_id)
+                conflicts_count = len(conflicts)
+                if conflicts_count > 0:
+                    needs_review = True
+                    warnings.append("Обнаружены логические несоответствия в данных исследования (факты)")
+                    logger.warning(f"Найдено {conflicts_count} конфликтов в фактах исследования {study_id}")
+                else:
+                    logger.info(f"Конфликтов в фактах не обнаружено для study_id={study_id}")
+                metrics_collector.end_timing("fact_consistency_check")
                 
                 # Шаг 6: Автоматический маппинг секций
                 metrics_collector.start_timing("section_mapping")
@@ -490,6 +533,108 @@ class IngestionService:
                     f"needs_review={mapping_summary.sections_needs_review_count}"
                 )
                 metrics_collector.end_timing("section_mapping")
+                
+                # Шаг 6.1: Автоматический LLM-assist для проблемных секций
+                if settings.secure_mode and settings.llm_provider and settings.llm_base_url and settings.llm_api_key:
+                    metrics_collector.start_timing("llm_assist_mapping")
+                    logger.info(f"Проверка проблемных секций для LLM-assist (doc_version_id={doc_version_id})")
+                    
+                    try:
+                        # Находим все TargetSectionMap для текущего doc_version_id
+                        problem_section_maps_stmt = select(TargetSectionMap).where(
+                            TargetSectionMap.doc_version_id == doc_version_id
+                        )
+                        problem_section_maps_result = await self.db.execute(problem_section_maps_stmt)
+                        all_section_maps = problem_section_maps_result.scalars().all()
+                        
+                        # Фильтруем проблемные секции: статус needs_review или 0 anchors
+                        problem_section_keys: list[str] = []
+                        for section_map in all_section_maps:
+                            is_problem = (
+                                section_map.status == SectionMapStatus.NEEDS_REVIEW
+                                or not section_map.anchor_ids
+                            )
+                            if is_problem:
+                                problem_section_keys.append(section_map.target_section)
+                        
+                        # Получаем TargetSectionContracts для проблемных секций
+                        if problem_section_keys:
+                            contracts_stmt = select(TargetSectionContract).where(
+                                TargetSectionContract.doc_type == document.doc_type,
+                                TargetSectionContract.target_section.in_(problem_section_keys),
+                                TargetSectionContract.is_active == True,
+                            )
+                            contracts_result = await self.db.execute(contracts_stmt)
+                            problem_contracts = contracts_result.scalars().all()
+                            
+                            # Получаем section_keys из контрактов (на случай, если некоторые не найдены)
+                            valid_section_keys = [c.target_section for c in problem_contracts]
+                            
+                            if valid_section_keys:
+                                logger.info(
+                                    f"Найдено {len(valid_section_keys)} проблемных секций для LLM-assist: {valid_section_keys}"
+                                )
+                                
+                                # Вызываем LLM-assist для проблемных секций
+                                assist_service = SectionMappingAssistService(self.db)
+                                assist_result = await assist_service.assist(
+                                    doc_version_id=doc_version_id,
+                                    section_keys=valid_section_keys,
+                                    max_candidates_per_section=3,
+                                    allow_visual_headings=False,
+                                    apply=True,  # Автоматически применяем результаты
+                                )
+                                
+                                logger.info(
+                                    f"LLM-assist завершён: обработано {len(valid_section_keys)} секций, "
+                                    f"llm_used={assist_result.llm_used}"
+                                )
+                                
+                                # Сохраняем информацию о LLM для логирования
+                                if assist_result.llm_used:
+                                    llm_info = {
+                                        "model": settings.llm_model,
+                                        "provider": settings.llm_provider.value if settings.llm_provider else None,
+                                    }
+                                    # Получаем системный промт из assist service
+                                    try:
+                                        system_prompt = assist_service._build_system_prompt(
+                                            max_candidates_per_section=3,
+                                            document_language=doc_version.document_language
+                                        )
+                                        llm_info["system_prompt"] = system_prompt
+                                    except Exception:
+                                        # Если не удалось получить промт, пропускаем
+                                        pass
+                                
+                                # Обновляем needs_review на основе результатов QC
+                                qc_needs_review_count = sum(
+                                    1 for qc in assist_result.qc.values() 
+                                    if qc.status == "needs_review"
+                                )
+                                if qc_needs_review_count > 0:
+                                    needs_review = True
+                                    logger.info(
+                                        f"LLM-assist: {qc_needs_review_count} секций всё ещё требуют проверки"
+                                    )
+                            else:
+                                logger.debug(
+                                    f"Проблемные секции найдены, но нет активных контрактов для doc_type={document.doc_type}"
+                                )
+                        else:
+                            logger.debug("Проблемных секций не найдено, LLM-assist не требуется")
+                    
+                    except Exception as e:
+                        # Не прерываем ингестию при ошибках LLM-assist
+                        error_msg = f"Ошибка при LLM-assist для проблемных секций: {str(e)}"
+                        warnings.append(error_msg)
+                        logger.warning(error_msg, exc_info=True)
+                    
+                    metrics_collector.end_timing("llm_assist_mapping")
+                else:
+                    logger.debug(
+                        "LLM-assist пропущен: SECURE_MODE=false или API ключи не настроены"
+                    )
                 
                 # Собираем метрики по section_maps (только по 12 core sections для protocol)
                 from app.services.section_mapping import PROTOCOL_CORE_SECTIONS
@@ -521,7 +666,7 @@ class IngestionService:
                             doc_version_id=doc_version_id,
                             mode="auto",
                             apply=True,
-                            confidence_threshold=0.65,
+                            confidence_threshold=0.55,
                         )
                         logger.info(
                             f"Topic mapping завершён: assignments={len(assignments)}, "
@@ -561,8 +706,13 @@ class IngestionService:
                         logger.warning(error_msg, exc_info=True)
                     
                     metrics_collector.end_timing("topic_mapping")
+                    
+                    # Собираем метрики по топикам
+                    await metrics_collector.collect_topics_metrics(document.doc_type)
                 else:
                     logger.debug(f"Topic mapping пропущен (doc_type={document.doc_type.value}, требуется protocol)")
+                    # Для непротокольных документов всё равно собираем метрики (они будут нулевыми)
+                    await metrics_collector.collect_topics_metrics(document.doc_type)
                 
             else:
                 # Неподдерживаемый формат (PDF и др.)
@@ -590,10 +740,24 @@ class IngestionService:
             ingestion_run.finished_at = datetime.now()
             ingestion_run.duration_ms = ingestion_duration_ms
             summary_json = metrics_collector.metrics.to_summary_json()
-            # Добавляем статистику выравнивания якорей (если была выполнена)
-            if alignment_summary is not None:
-                summary_json["matched_anchors"] = alignment_summary["matched_anchors"]
-                summary_json["changed_anchors"] = alignment_summary["changed_anchors"]
+            # Принудительно записываем данные SoA и Alignment в корень для удобства извлечения
+            summary_json["soa_confidence"] = soa_confidence
+            summary_json["matched_anchors"] = alignment_summary.get("matched_anchors", 0) if alignment_summary else 0
+            summary_json["changed_anchors"] = alignment_summary.get("changed_anchors", 0) if alignment_summary else 0
+            # Добавляем информацию о LLM, если он был использован
+            if llm_info:
+                summary_json["llm_info"] = llm_info
+            # Добавляем anchors_created и chunks_created в корень для консистентности (используем локальные переменные)
+            summary_json["anchors_created"] = anchors_created
+            summary_json["chunks_created"] = chunks_created
+            # Добавляем количество найденных конфликтов
+            summary_json["conflicts_found"] = conflicts_count
+            # Добавляем метрики topic mapping и fact extraction в корень для удобства извлечения
+            summary_json["topics_mapped_count"] = metrics_collector.metrics.topics.mapped_count
+            summary_json["topics_mapped_rate"] = round(metrics_collector.metrics.topics.mapped_rate, 4)
+            summary_json["facts_extracted_total"] = metrics_collector.metrics.facts.total
+            summary_json["facts_validated_count"] = metrics_collector.metrics.facts.validated_count
+            summary_json["facts_conflicting_count"] = metrics_collector.metrics.facts.conflicting_count
             ingestion_run.summary_json = summary_json
             ingestion_run.quality_json = quality_json
             ingestion_run.warnings_json = warnings
@@ -607,6 +771,15 @@ class IngestionService:
                 f"Ингестия завершена для {doc_version_id}: "
                 f"{anchors_created} anchors, {chunks_created} chunks, "
                 f"soa_detected={soa_detected}, needs_review={needs_review}"
+            )
+            # Выводим финальную строку BENCHMARK_SIGNAL
+            topics_mapped = metrics_collector.metrics.topics.mapped_count
+            topics_total = metrics_collector.metrics.topics.total_topics
+            facts_extracted = metrics_collector.metrics.facts.total
+            facts_conflicts = metrics_collector.metrics.facts.conflicting_count
+            logger.info(
+                f"BENCHMARK_SIGNAL: Topics: {topics_mapped}/{topics_total}, "
+                f"Facts: {facts_extracted} (Conflicts: {facts_conflicts})"
             )
 
             return IngestionResult(

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -21,6 +22,53 @@ from app.db.models.anchors import Anchor, Chunk
 from app.db.models.anchor_matches import AnchorMatch
 from app.db.models.studies import DocumentVersion
 from app.services.text_normalization import normalize_for_match
+
+
+def _convert_to_json_serializable(obj: Any) -> Any:
+    """
+    Конвертирует numpy типы и другие не-JSON-сериализуемые объекты в стандартные Python типы.
+    
+    Args:
+        obj: Объект для конвертации
+        
+    Returns:
+        JSON-сериализуемый объект
+    """
+    # Проверяем, является ли это numpy scalar типом (float32, float64, int32, etc.)
+    # numpy scalar типы имеют метод item() и имя класса вида numpy.float32, numpy.int64
+    if hasattr(obj, 'item') and hasattr(obj.__class__, '__module__'):
+        module = obj.__class__.__module__
+        if module and ('numpy' in module or module == 'numpy'):
+            return obj.item()
+    
+    # Также проверяем по имени класса на случай, если модуль не доступен
+    class_name = obj.__class__.__name__
+    if class_name in ('float32', 'float64', 'float16', 'int32', 'int64', 'int16', 'int8',
+                      'uint32', 'uint64', 'uint16', 'uint8') and hasattr(obj, 'item'):
+        return obj.item()
+    
+    # Если это numpy тип, но item() недоступен, пробуем float() или int()
+    if class_name.startswith('float') and hasattr(obj, '__float__') and not isinstance(obj, float):
+        try:
+            return float(obj)
+        except (ValueError, TypeError):
+            pass
+    if class_name.startswith('int') and hasattr(obj, '__int__') and not isinstance(obj, int):
+        try:
+            return int(obj)
+        except (ValueError, TypeError):
+            pass
+    
+    # Обрабатываем словари
+    if isinstance(obj, dict):
+        return {key: _convert_to_json_serializable(value) for key, value in obj.items()}
+    
+    # Обрабатываем списки и кортежи
+    if isinstance(obj, (list, tuple)):
+        return [_convert_to_json_serializable(item) for item in obj]
+    
+    # Для всех остальных типов возвращаем как есть (str, int, float, bool, None уже JSON-сериализуемы)
+    return obj
 
 
 @dataclass
@@ -55,7 +103,7 @@ class AnchorAligner:
         doc_version_b: UUID | DocumentVersion,
         *,
         scope: str = "body",
-        min_score: float = 0.78,
+        min_score: float = 0.6,
     ) -> AlignmentStats:
         """
         Выравнивает якоря между двумя версиями документа.
@@ -89,6 +137,12 @@ class AnchorAligner:
         # Получаем все якоря для обеих версий
         anchors_a = await self._get_anchors(doc_version_a.id)
         anchors_b = await self._get_anchors(doc_version_b.id)
+        
+        # Логируем количество якорей ДО начала матчинга
+        logger.info(
+            f"Количество якорей для матчинга: v1 (doc_version_id={doc_version_a.id}) = {len(anchors_a)}, "
+            f"v2 (doc_version_id={doc_version_b.id}) = {len(anchors_b)}"
+        )
         
         # Получаем embeddings через chunks
         embeddings_a = await self._get_anchor_embeddings(doc_version_a.id, anchors_a)
@@ -147,7 +201,10 @@ class AnchorAligner:
         """Получает все якоря для версии документа."""
         stmt = select(Anchor).where(Anchor.doc_version_id == doc_version_id)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        anchors = list(result.scalars().all())
+        if len(anchors) == 0:
+            logger.error(f"ERROR: Aligner found 0 anchors in DB for version {doc_version_id}")
+        return anchors
     
     async def _get_anchor_embeddings(
         self, doc_version_id: UUID, anchors: list[Anchor]
@@ -194,10 +251,11 @@ class AnchorAligner:
     @staticmethod
     def _extract_hash_part(anchor_id: str) -> str:
         """
-        Извлекает последнюю хеш-часть из anchor_id, игнорируя суффиксы вида :v2.
+        Извлекает последнюю хеш-часть из anchor_id, игнорируя префикс doc_version_id и суффиксы вида :v2.
         Форматы:
-          doc:ctype:hash
-          doc:ctype:hash:v2
+          {doc_version_id}:ctype:hash
+          {doc_version_id}:ctype:hash:v2
+          {doc_version_id}:fn:fn_index:fn_para_index:hash
         """
         # Убираем суффикс версионности внутри одной версии (":v2")
         base_part = anchor_id
@@ -205,6 +263,7 @@ class AnchorAligner:
             parts = anchor_id.rsplit(":v", 1)
             if len(parts) == 2 and parts[1].isdigit():
                 base_part = parts[0]
+        # Извлекаем только последнюю часть (хеш контента), игнорируя все префиксы включая doc_version_id
         return base_part.split(":")[-1]
     
     def _match_anchors(
@@ -272,12 +331,13 @@ class AnchorAligner:
                 )
                 
                 # Добавляем бонусы к финальному score
-                final_score = min(1.0, score + zone_bonus + lang_bonus)
+                final_score = float(min(1.0, score + zone_bonus + lang_bonus))
                 
                 if final_score >= min_score:
                     candidates.append((anchor_a, anchor_b, final_score))
-                    meta["zone_bonus"] = zone_bonus
-                    meta["lang_bonus"] = lang_bonus
+                    # Конвертируем бонусы в стандартные Python типы
+                    meta["zone_bonus"] = float(zone_bonus)
+                    meta["lang_bonus"] = float(lang_bonus)
         
         # Сортируем по score (убывание)
         candidates.sort(key=lambda x: x[2], reverse=True)
@@ -331,7 +391,8 @@ class AnchorAligner:
         
         # 3. Embedding score
         emb_score = 0.0
-        if embedding_a and embedding_b:
+        # Проверяем явно на None, так как embedding_a и embedding_b могут быть list[float]
+        if embedding_a is not None and embedding_b is not None:
             emb_score = self._cosine_similarity(embedding_a, embedding_b)
             meta["emb_sim"] = emb_score
         else:
@@ -370,6 +431,10 @@ class AnchorAligner:
         path_penalty = 0.15 * (1.0 - path_score)
         combined = max(0.0, combined - path_penalty)
         
+        # Конвертируем все значения в стандартные Python типы для JSON сериализации
+        combined = float(combined)
+        meta = _convert_to_json_serializable(meta)
+        
         return (combined, method, meta)
     
     def _fuzzy_score(self, text_a: str, text_b: str) -> float:
@@ -377,13 +442,19 @@ class AnchorAligner:
         if not text_a or not text_b:
             return 0.0
         
+        # Нормализация текста: удаление всех спецсимволов и лишних пробелов
+        text_a_normalized = re.sub(r'[^\w\s]', '', text_a)  # Удаляем все спецсимволы
+        text_a_normalized = re.sub(r'\s+', ' ', text_a_normalized).strip()  # Удаляем лишние пробелы
+        text_b_normalized = re.sub(r'[^\w\s]', '', text_b)  # Удаляем все спецсимволы
+        text_b_normalized = re.sub(r'\s+', ' ', text_b_normalized).strip()  # Удаляем лишние пробелы
+        
         # Используем SequenceMatcher для базового fuzzy matching
-        matcher = SequenceMatcher(None, text_a, text_b)
+        matcher = SequenceMatcher(None, text_a_normalized, text_b_normalized)
         ratio = matcher.ratio()
         
-        # Дополнительно: token-based similarity
-        tokens_a = set(text_a.split())
-        tokens_b = set(text_b.split())
+        # Дополнительно: token-based similarity (используем нормализованные тексты)
+        tokens_a = set(text_a_normalized.split())
+        tokens_b = set(text_b_normalized.split())
         
         if not tokens_a or not tokens_b:
             return ratio
@@ -430,15 +501,20 @@ class AnchorAligner:
         
         # Создаем новые матчи
         for anchor_a, anchor_b, score, method, meta in matches:
+            # Конвертируем numpy типы в стандартные Python типы для JSON сериализации
+            # Также конвертируем score на случай, если он numpy тип
+            json_serializable_score = _convert_to_json_serializable(score)
+            json_serializable_meta = _convert_to_json_serializable(meta)
+            
             match = AnchorMatch(
                 document_id=document_id,
                 from_doc_version_id=from_version_id,
                 to_doc_version_id=to_version_id,
                 from_anchor_id=anchor_a.anchor_id,
                 to_anchor_id=anchor_b.anchor_id,
-                score=score,
+                score=json_serializable_score,
                 method=method,
-                meta_json=meta,
+                meta_json=json_serializable_meta,
             )
             self.db.add(match)
         
