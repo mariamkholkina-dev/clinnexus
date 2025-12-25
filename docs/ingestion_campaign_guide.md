@@ -55,11 +55,17 @@ alembic current
 ### 2.2 Конфигурационные файлы
 
 **Обязательные файлы:**
-- `backend/app/data/source_zone_rules.yaml` — правила классификации source_zone
+- `backend/app/data/source_zones/rules_{doc_type}.yaml` — правила классификации source_zone для каждого типа документа
+  - Например: `rules_protocol.yaml`, `rules_csr.yaml`
+  - **Примечание**: Старый файл `source_zone_rules.yaml` устарел, используется новая структура с отдельными файлами для каждого doc_type
 
 **Проверка наличия:**
 ```bash
-ls -la backend/app/data/source_zone_rules.yaml
+# Проверка правил для протоколов
+ls -la backend/app/data/source_zones/rules_protocol.yaml
+
+# Проверка всех правил
+ls -la backend/app/data/source_zones/rules_*.yaml
 ```
 
 **Примечание:** Таблицы taxonomy удалены в миграции 0020. Структура документов определяется через templates и `target_section_contracts`.
@@ -506,16 +512,16 @@ WHERE dv.id = '<version_id>';
 - В `campaign_summary` много документов с `unknown_rate_above_25pct`
 
 **Вероятные причины:**
-- В `source_zone_rules.yaml` нет правил для часто встречающихся заголовков
+- В `rules_{doc_type}.yaml` нет правил для часто встречающихся заголовков
 - Regex-паттерны слишком строгие
 - Заголовки на другом языке (RU vs EN)
 
 **Где исправить:**
-- **Файл**: `backend/app/data/source_zone_rules.yaml`
+- **Файлы**: `backend/app/data/source_zones/rules_{doc_type}.yaml` (например, `rules_protocol.yaml` для протоколов)
 - **Добавить правила** для неизвестных заголовков (см. `summary_json.anchors.top_unknown_headings`)
 
 **Как валидировать:**
-1. Добавить правила в `source_zone_rules.yaml`
+1. Добавить правила в соответствующий файл `rules_{doc_type}.yaml`
 2. Запустить кампанию на golden set (20-30 документов)
 3. Проверить, что `unknown_rate` снизился
 4. Проверить, что новые правила не сломали существующие (регрессия)
@@ -899,16 +905,20 @@ ORDER BY MAX(ir.started_at) DESC;
 
 ### 10.3 Отсутствуют конфигурационные файлы
 
-**Ошибка**: `FileNotFoundError: source_zone_rules.yaml` или подобное
+**Ошибка**: `FileNotFoundError: rules_{doc_type}.yaml` или подобное
 
 **Решение:**
 1. Проверьте наличие файлов:
    ```bash
-   ls -la backend/app/data/source_zone_rules.yaml
+   # Для протоколов
+   ls -la backend/app/data/source_zones/rules_protocol.yaml
+   
+   # Для всех типов документов
+   ls -la backend/app/data/source_zones/rules_*.yaml
    ```
 2. Если файлы отсутствуют, восстановите из git:
    ```bash
-   git checkout backend/app/data/source_zone_rules.yaml
+   git checkout backend/app/data/source_zones/
    ```
 3. Или создайте минимальные версии (см. примеры в репозитории)
 
@@ -1019,4 +1029,6 @@ LIMIT 1;
 
 **Последнее обновление**: 2024-12-19  
 **Версия скрипта**: `backend/app/scripts/run_ingestion_campaign.py`
+
+**Примечание**: Правила source_zone теперь хранятся в отдельных файлах для каждого типа документа: `backend/app/data/source_zones/rules_{doc_type}.yaml`
 
