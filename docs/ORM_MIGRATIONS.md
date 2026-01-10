@@ -154,6 +154,18 @@ docker-compose up --build
     - Уникальный индекс на `(doc_version_id, heading_block_id)`
     - Индексы для быстрого поиска по `doc_version_id` и `topic_key`
     - Используется `TopicMappingService` для создания маппингов и `TopicEvidenceBuilder` для построения доказательств
+  - `0022_add_usr_4_1_enums_and_tables.py` - Обновление схемы данных для соответствия USR 4.1:
+    - Создание ENUM типов: `fact_scope` (global, arm, group, visit), `audit_severity` (critical, major, minor), `audit_category` (consistency, grammar, logic, terminology, compliance), `audit_status` (open, suppressed, resolved)
+    - Добавление полей в таблицу `facts`: `scope` (ENUM fact_scope, по умолчанию 'global'), `type_category` (VARCHAR(128), nullable)
+    - Индексы на `facts.scope` и `facts.type_category` для быстрого поиска
+    - Таблица `audit_issues` для хранения аудиторских находок:
+      - Связь с `studies` и опционально с `document_versions`
+      - Поля: `severity`, `category`, `description`, `location_anchors` (JSONB), `status`, `suppression_reason`
+      - Индексы для фильтрации по `study_id`, `doc_version_id`, `severity`, `category`, `status`, составной индекс `(study_id, status)`
+    - Таблица `terminology_dictionaries` для словарей терминологии:
+      - Поля: `study_id`, `term_category`, `preferred_term`, `variations` (JSONB)
+      - Уникальное ограничение на `(study_id, term_category, preferred_term)`
+      - Индексы для быстрого поиска по `study_id` и `term_category`
 
 В `backend/DATABASE_SETUP.md` есть доп. контекст по структуре таблиц, enum и pgvector.
 

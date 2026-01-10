@@ -216,7 +216,7 @@ class DocxIngestor:
         doc_version_id: UUID, 
         document_language: DocumentLanguage,
         doc_type: DocumentType,
-        timeout_seconds: int = 120
+        timeout_seconds: int = 600
     ) -> DocxIngestResult:
         """
         Парсит DOCX документ и создаёт anchors.
@@ -226,7 +226,7 @@ class DocxIngestor:
             doc_version_id: UUID версии документа
             document_language: Язык документа
             doc_type: Тип документа (определяет набор правил классификации source_zone)
-            timeout_seconds: Максимальное время обработки документа в секундах (по умолчанию 120)
+            timeout_seconds: Максимальное время обработки документа в секундах (по умолчанию 600 = 10 минут)
             
         Returns:
             DocxIngestResult с anchors, summary и warnings

@@ -1,107 +1,97 @@
-## Архитектура ClinNexus MVP
+## Архитектура ClinNexus MVP (Соответствие USR 4.1)
 
 ### Ключевые сущности
 
-- **Workspace / User / Membership**: многотенантность и RBAC на уровне рабочего пространства.
-- **Study**: исследование в рамках workspace.
-- **Document / DocumentVersion**: документы и их версии, связанные со study.
-- **Anchor**: минимальная адресуемая единица содержимого (параграф/ячейка/функция и т.д.).
-  - Для paragraph-anchors (P/LI/HDR): `anchor_id = {doc_version_id}:{content_type}:{para_index}:{hash(text_norm)}`
-  - Для footnotes (FN): `anchor_id = {doc_version_id}:fn:{fn_index}:{fn_para_index}:{hash(text_norm)}`
-  - `location_json` описывает координаты в исходном документе (para_index, fn_index, fn_para_index, section_path и т.п.).
-  - ВАЖНО: `section_path` и `ordinal` не входят в `anchor_id` для стабильности при переносах между разделами.
-  - `source_zone` — зона источника (ENUM: один из 12 канонических ключей + "unknown") для классификации контента
-    - Канонические ключи: `overview`, `design`, `ip`, `statistics`, `safety`, `endpoints`, `population`, `procedures`, `data_management`, `ethics`, `admin`, `appendix`
-    - Классификация выполняется через `SourceZoneClassifier` на основе `section_path` и `heading_text`
-  - `language` — язык контента (ru/en/mixed/unknown) для многоязычных документов.
-- **Chunk**: векторное представление нескольких anchor-ов (pgvector) + список `anchor_ids`.
-  - `source_zone` и `language` наследуются от anchors (most_common для source_zone) для фильтрации и поиска.
-- **AnchorMatch**: соответствия между якорями разных версий документа для diff/impact анализа.
-  - Используется для выравнивания якорей при сравнении версий (exact/fuzzy/embedding/hybrid методы).
-- **Study KB Facts + fact_evidence**: факты исследования и их привязка к конкретным anchor-ам.
-- **StudyCoreFacts**: структурированные основные факты исследования (study_title, phase, study_design_type, population_short, arms, primary_endpoints, sample_size, duration) с версионированием.
-- **Templates + TargetSectionContracts**: шаблоны и контракты разделов протокола (JSON-схемы). Таблица `target_section_contracts` (переименована из `section_contracts` в миграции 0017).
-  - `target_section` — целевая секция (один из 12 канонических ключей, валидация в моделях и схемах).
-  - `view_key` — ключ представления для группировки секций в UI.
-  - `retrieval_recipe_json.prefer_source_zones` — приоритетные source_zone для retrieval (автоматически заполняются из правил для каждой target_section).
-  - `retrieval_recipe_json.fallback_source_zones` — резервные source_zone, если prefer пуст.
-  - **ПРИМЕЧАНИЕ**: Структура документов определяется через templates и `target_section_contracts`. Таблицы taxonomy (`target_section_taxonomy_*`) удалены в миграции 0020.
-- **Topics + HeadingClusters + ClusterAssignment + TopicEvidence + HeadingBlockTopicAssignments**: семантические топики для группировки контента (расширено в миграциях 0014, 0018, 0021).
-  - `topics` — топики с workspace_id, topic_key, title_ru/en, description, topic_profile_json, is_active, topic_embedding, applicable_to_json.
-  - `heading_clusters` — кластеры заголовков с cluster_embedding (миграция 0014).
-  - `cluster_assignments` — привязка кластеров к топикам для doc_version с mapping_debug_json (миграция 0015).
-  - `heading_block_topic_assignments` — прямой маппинг блоков заголовков на топики для doc_version (миграция 0021). Блоки строятся динамически из anchors через `HeadingBlockBuilder`, `heading_block_id` — стабильный идентификатор блока.
-  - `topic_evidence` — агрегированные доказательства для топиков с anchor_ids, chunk_ids, source_zone, language.
-  - `topic_mapping_runs` — отслеживание запусков маппинга топиков (миграция 0014).
-  - `topic_zone_priors` — приоритеты зон по doc_type для топиков (миграция 0018).
-- **ZoneSets + ZoneCrosswalk**: наборы зон и кросс-документный маппинг зон (миграция 0019).
-- **IngestionRuns**: отслеживание запусков ингестии с метриками, качеством и предупреждениями (миграция 0013).
-- **GenerationRun + GeneratedTargetSection**: процесс и результат генерации текста раздела, артефакты и QC. Таблица `generated_target_sections` (переименована из `generated_sections` в миграции 0017).
-  - `target_section` — целевая секция (переименовано из `section_key` в миграции 0007).
-  - `view_key` — ключ представления.
-- **Conflicts + conflict_items**: обнаруженные противоречия между фактами/документами.
-- **ChangeEvents + ImpactItems + Tasks**: изменения, их потенциальный импакт и задачи по внедрению.
-  - `affected_target_section` — затронутая целевая секция (переименовано из `affected_section_key`).
-- **AuditLog**: append-only лог действий пользователей.
+- **Workspace / User / Membership**: многотенантность и RBAC. Роль: **Medical Writer**.
+- **Study**: исследование. Хранит глобальные параметры (терапия, популяция, дизайн) как "Источник истины".
+- **Document / DocumentVersion**:
+  - Типы: `protocol`, `ib` (брошюра), `csr` (отчет), `icf` (согласие).
+  - Приоритет: Протокол является мастер-документом (USR-1.6).
+- **Anchor (Якорь)**:
+  - Реализует USR-102 (Цифровой двойник).
+  - Уникальный ID (`anchor_id`) для абзацев, ячеек таблиц, сносок.
+  - `hash16`: обеспечивает стабильность ссылок при редактировании.
+- **Fact Store (База фактов)**:
+  - Реализует USR-201, USR-202.
+  - Атрибуты: `scope` (Arm/Group), `data_type`, `criticality` (GxP), `transformability` (для ICF), `temporal` (визиты).
+  - Таксономия: Административные, Дизайн, Популяция, Терапия, **БЭ-специфика** (Washout, Sampling points, Analytes), Безопасность.
+- **AuditIssue (Результат аудита)**:
+  - Новая сущность для USR-3xx и USR-4xx.
+  - Поля: `severity` (Critical, Major, Minor), `category` (Consistency, Grammar, Logic, Terminology), `description`, `location_anchors` (список якорей), `status` (Open, Suppressed, Resolved), `suppression_reason`.
+- **TerminologyDictionary (Терминологический словарь)**:
+  - Для USR-302. Хранит утвержденные варианты написания для исследования (препарат, популяция).
+- **ChangeLogItem (Элемент перечня изменений)**:
+  - Для USR-602.
+  - Поля: `section_name`, `old_value`, `new_value`, `justification`, `change_type`.
 
 ### Слои backend
 
-- `app/api`: HTTP-контракты (FastAPI), только оркестрация и валидация.
-- `app/services`: доменные сервисы:
-  - **Ingestion**: `IngestionService`, `DocxIngestor`, `SoAExtractionService`
-  - **Extraction**: `FactExtractionService`, `ValueNormalizer` (GxP Double Check для сложных значений)
-  - **Mapping**: `SectionMappingService`, `SectionMappingAssistService` (LLM-assisted), `TopicMappingService`
-  - **Retrieval**: `RetrievalService` (pgvector search)
-  - **Generation**: `GenerationService`, `ValidationService` (QC), `LeanContextBuilder`
-  - **Change Management**: `DiffService`, `ImpactService`, `AnchorAligner`
-  - **Conflicts**: `ConflictService`, `FactConflictDetector`
-  - **Topics**: `TopicMappingService`, `TopicEvidenceBuilder`, `HeadingBlockBuilder`, `HeadingClusteringService`
-  - **Repositories**: `TopicRepository`, `ClusterAssignmentRepository`, `ZoneSetRepository`, `ZoneCrosswalkRepository`
-- `app/db`: SQLAlchemy-модели и сессии.
-- `app/schemas`: Pydantic-схемы для JSON-платформы (FactItem, SoAResult, Artifacts, QCReport и др.).
-- `app/core`: настройки, ошибки, кросс-срезы.
-- `app/worker`: заготовка воркера для фоновых задач (ingestion, extraction, generation).
+- `app/api/v1`:
+  - `audits.py` — запуск проверок (внутридокументных и кросс-документных), получение списка AuditIssues.
+  - `export.py` — выгрузка документов (DOCX) и отчетов (Перечень изменений).
+  - `dictionaries.py` — управление терминологией исследования.
+  - *Существующие:* `studies.py`, `documents.py`, `generation.py`, `conflicts.py`, `impact.py`.
+
+- `app/services`:
+  - **Ingestion (USR-101, 102):**
+    - `DocxIngestor`: расширенная поддержка структур GCP ЕАЭС для Протокола, БИ, CSR, ICF.
+    - `NarrativeIndexer`: построение векторного индекса для "Layman Translation" (USR-501) и семантического поиска.
+  
+  - **Auditing (Новый модуль, USR-3xx, 4xx):**
+    - `StyleAuditService`: проверка орфографии, грамматики, научного стиля (USR-301).
+    - `TerminologyGuardService`: контроль единообразия терминов (USR-302).
+    - `ProtocolLogicAuditor`:
+      - `ConsistencyCheck`: Синопсис vs Теекст (USR-303).
+      - `CalendarLogicCheck`: Visit Windows, Таблица vs Текст (USR-304).
+      - `TraceabilityCheck`: Цель -> Точка -> Метод (USR-305).
+    - `BioequivalenceAuditor`: специфика БЭ (Washout vs T1/2, плотность точек забора) (USR-306).
+    - `CrossDocConsistencyService`: сверка Протокола с БИ, ICF, CSR (USR-401).
+
+  - **Extraction:**
+    - `FactExtractionService`: обновлен для извлечения параметров БЭ (USR-202).
+  
+  - **Generation (USR-5xx):**
+    - `IcfGenerator`: использует `LaymanTransformer` (LLM-based упрощение терминов через Narrative Index) (USR-501).
+    - `CsrGenerator`: автозаполнение разделов 1–10 данными Протокола (USR-502).
+      - **TenseTransformer Logic**: Ключевой компонент для конвертации грамматического времени. Трансформирует нарратив из **будущего времени** (стиль Протокола: *"Визиты будут проводиться..."*) в **прошедшее время** (стиль Отчета: *"Визиты проводились..."*).
+    - `DocxAssembler`: сборка финального DOCX с сохранением корпоративных стилей (USR-701).
+
+  - **Change Management (USR-6xx):**
+    - `SemanticDiffService`: сравнение версий текста и фактов (USR-601).
+    - `ChangelogGenerator`: формирование таблицы "Было -> Стало -> Обоснование" (USR-602).
 
 ### Пайплайны
 
-- **Ingestion**
-  1. `POST /document_versions/{version_id}/upload` — загрузка файла, сохранение в локальное хранилище.
-  2. `POST /document_versions/{version_id}/ingest` — постановка задачи ingestion в воркер.
-  3. Воркер извлекает текст/структуру, создаёт Anchors, Chunks, обновляет статус `DocumentVersion`.
+- **Ingestion & Validation (USR-101, 103)**
+  1. Загрузка DOCX -> Парсинг структуры (Протокол/БИ/CSR/ICF).
+  2. Создание "Цифрового двойника" (Anchors + Facts).
+  3. **UI Validation**: Пользователь подтверждает корректность разбора зон и ключевых фактов перед аудитом.
 
-- **SoA / Facts**
-  1. `SoAExtractionService` извлекает таблицу SoA из DOCX, создаёт cell anchors и факты типа `soa.*`.
-  2. `FactExtractionService` извлекает факты через rules-first подход (regex-правила из `fact_extraction_rules.py`):
-     - Поддерживает приоритеты правил, предпочтительные source_zones и топики
-     - Создаёт факты со статусом `extracted`, `needs_review` или `validated`
-  3. `ValueNormalizer` выполняет GxP-совместимый двойной контроль (Double Check) для сложных значений:
-     - Автоматически определяет сложные значения (несколько чисел, длинные фразы, вложенные структуры)
-     - Использует LLM для нормализации сложных значений (требует `secure_mode=true`)
-     - Сравнивает результат LLM с regex-результатом
-     - Если совпадают → статус `validated`, если нет → `conflicting`
-  4. Воркер записывает факты (Study KB Facts) + fact_evidence.
-  5. `GET /studies/{study_id}/facts` читает агрегированное представление.
+- **Audit & Consistency Loop (USR-3xx, 4xx)**
+  1. Пользователь запускает Аудит для версии документа.
+  2. Параллельный запуск аудиторов:
+     - `StyleAuditService` (Spellcheck/Style).
+     - `LogicAuditor` (Internal Logic, BE-specifics).
+     - `TerminologyGuard`.
+  3. Если есть связанные документы -> запуск `CrossDocConsistencyService` (Protocol vs IB/ICF).
+  4. Генерация записей `AuditIssue`.
+  5. Пользователь в UI просматривает проблемы, исправляет текст или делает `Suppression` (подавление с обоснованием).
 
-- **Retrieval / Generation**
-  1. RetrievalService использует pgvector для поиска релевантных anchors/chunks с фильтрацией по `source_zone`.
-  2. Приоритизация по `prefer_source_zones` из `section_contract.retrieval_recipe_json` (сначала prefer, затем fallback).
-  3. GenerationService формирует `GenerationRun` и `GeneratedSection` (+Artifacts, QCReport).
+- **Generation Pipeline (USR-5xx)**
+  1. **ICF**: Выбор разделов Протокола -> `LaymanTransformer` (упрощение) -> Генерация DOCX.
+  2. **CSR (Clinical Study Report)**: 
+     - Извлечение релевантных секций Протокола (Методология, Дизайн, Популяция).
+     - **Tense Shift (Future -> Past)**: Применение `TenseTransformer` для изменения времени глаголов (planning -> reporting style).
+     - Маппинг на структуру CSR (GCP ЕАЭС) -> Заполнение секций 1-10.
+  3. **Export**: `DocxAssembler` применяет стили и собирает файл.
 
-- **Conflicts / Impact**
-  1. `DiffService` сравнивает версии документов через `AnchorAligner` (exact/fuzzy/embedding/hybrid методы), создаёт `AnchorMatch` и `ChangeEvents`.
-  2. `ImpactService.compute_impact(...)` вычисляет воздействие изменений:
-     - Использует `AnchorMatch` для определения измененных якорей (score < 0.95 считается изменением)
-     - Находит удаленные якоря (отсутствующие в `AnchorMatch`)
-     - Извлекает `anchor_id` из `artifacts_json` сгенерированных секций
-     - Создает `ImpactItem` для каждой затронутой секции с описанием изменений
-     - Автоматически создает `Task` типа `REVIEW_IMPACT` для пользователя
-  3. `ConflictService` и `FactConflictDetector` обнаруживают противоречия между фактами/документами.
+- **Change Management (USR-6xx)**
+  1. Загрузка новой версии Протокола (V2).
+  2. `AnchorAligner` выравнивает V1 и V2.
+  3. `SemanticDiffService` детектирует изменения.
+  4. `ChangelogGenerator` создает черновик "Перечня изменений".
+  5. `ImpactService` помечает связанные разделы в ICF/CSR как требующие обновления (Outdated).
 
-- **Passport Tuning / Topics**
-  1. API `/api/passport-tuning/*` для работы с кластерами заголовков и их маппингом на секции.
-  2. `HeadingBlockBuilder` строит блоки заголовков из anchors для doc_version (динамически, с генерацией стабильного `heading_block_id`).
-  3. `TopicMappingService` создаёт `heading_block_topic_assignments` для прямого маппинга блоков на топики (миграция 0021).
-  4. `TopicEvidenceBuilder` строит агрегированные доказательства для топиков из `heading_block_topic_assignments` и блоков.
-  5. Используется для настройки паспортов секций и семантической группировки контента.
-
-
+### Системные требования (USR-8)
+- **Performance**: Оптимизация `IngestionService` и `AuditService` для обработки 300 стр. < 10 мин.
+- **Audit Trail**: Все действия (загрузка, редактирование фактов, подавление ошибок, выгрузка) пишутся в `AuditLog`.

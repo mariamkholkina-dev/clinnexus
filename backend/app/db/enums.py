@@ -177,4 +177,39 @@ class SourceZone(str, Enum):
     UNKNOWN = "unknown"
 
 
+class FactScope(str, Enum):
+    """Область действия факта в структуре исследования."""
+    
+    GLOBAL = "global"
+    ARM = "arm"
+    GROUP = "group"
+    VISIT = "visit"
+
+
+class AuditSeverity(str, Enum):
+    """Серьезность аудиторской находки."""
+    
+    CRITICAL = "critical"
+    MAJOR = "major"
+    MINOR = "minor"
+
+
+class AuditCategory(str, Enum):
+    """Категория аудиторской проверки."""
+    
+    CONSISTENCY = "consistency"
+    GRAMMAR = "grammar"
+    LOGIC = "logic"
+    TERMINOLOGY = "terminology"
+    COMPLIANCE = "compliance"
+
+
+class AuditStatus(str, Enum):
+    """Статус аудиторской находки."""
+    
+    OPEN = "open"
+    SUPPRESSED = "suppressed"
+    RESOLVED = "resolved"
+
+
 

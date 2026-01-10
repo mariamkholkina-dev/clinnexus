@@ -17,8 +17,9 @@ from __future__ import annotations
 """
 
 from .auth import Membership, User, Workspace  # noqa: F401
-from .audit import AuditLog  # noqa: F401
+from .audit import AuditIssue, AuditLog  # noqa: F401
 from .change import ChangeEvent, ImpactItem, Task  # noqa: F401
+from .dictionaries import TerminologyDictionary  # noqa: F401
 from .anchors import Anchor, Chunk  # noqa: F401
 from .anchor_matches import AnchorMatch  # noqa: F401
 from .conflicts import Conflict, ConflictItem  # noqa: F401

@@ -20,7 +20,7 @@ from app.db.enums import FactStatus
 
 
 # Версия экстрактора (увеличивается при изменении логики)
-EXTRACTOR_VERSION = 1
+EXTRACTOR_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -734,6 +734,266 @@ def get_extraction_rules() -> list[ExtractionRule]:
         preferred_topics=['design_plan']
     ))
 
+    # ============================================================================
+    # РАСШИРЕННЫЕ ПРАВИЛА ДЛЯ ПОЛНОФУНКЦИОНАЛЬНОГО ИЗВЛЕЧЕНИЯ (EXTRACTOR_VERSION 2)
+    # ============================================================================
+
+    # --- PROTOCOL METADATA (расширение) ---
+    # Protocol ID
+    rules.append(ExtractionRule(
+        fact_type="protocol_meta", fact_key="protocol_id",
+        patterns_ru=[
+            re.compile(r"\b(?:протокол|protocol|study)\s*(?:no\.?|number|id|код|номер)\s*[:#]?\s*(?P<value>[A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\b(?:study\s+id|код\s+исследования)\s*[:#]?\s*(?P<value>[A-Za-z0-9А-Яа-я._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\b(?P<value>[A-Z]{2,10}[–\-]?\d{3,10}(?:[–\-]?[A-Z0-9]+)?)\s*(?:protocol|протокол)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bprotocol\s*(?:no\.?|number|id)\s*[:#]?\s*(?P<value>[A-Za-z0-9._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\bstudy\s+id\s*[:#]?\s*(?P<value>[A-Za-z0-9._/\-]{1,64})", re.IGNORECASE),
+            re.compile(r"\b(?P<value>[A-Z]{2,10}[–\-]?\d{3,10}(?:[–\-]?[A-Z0-9]+)?)\s*protocol", re.IGNORECASE),
+        ],
+        parser=parse_protocol_id_value, confidence_policy=confidence_high, priority=240,
+        preferred_topics=['admin_ethics', 'overview_objectives']
+    ))
+
+    # Phase (расширение существующего правила)
+    rules.append(ExtractionRule(
+        fact_type="protocol_meta", fact_key="phase",
+        patterns_ru=[
+            re.compile(r"\b(?:фаза|phase)\s+[:\-]?\s*(?P<value>[I1-4IV]+(?:[–\-/]?[I1-4IV]+)?)\b", re.IGNORECASE),
+            re.compile(r"\b(?P<value>[I1-4IV]+(?:[–\-/]?[I1-4IV]+)?)\s+(?:фаза|phase)\s+(?:study|исследование)", re.IGNORECASE),
+            re.compile(r"\b(?:первой|второй|третьей|четвертой)\s+фазы", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bphase\s+[:\-]?\s*(?P<value>[I1-4IV]+(?:[–\-/]?[I1-4IV]+)?)\b", re.IGNORECASE),
+            re.compile(r"\b(?P<value>[I1-4IV]+(?:[–\-/]?[I1-4IV]+)?)\s+phase\s+study", re.IGNORECASE),
+        ],
+        parser=lambda t, m: {"value": _normalize_phase(t)}, confidence_policy=confidence_high, priority=210,
+        preferred_topics=['overview_objectives', 'design_plan']
+    ))
+
+    # Therapeutic Area
+    rules.append(ExtractionRule(
+        fact_type="protocol_meta", fact_key="therapeutic_area",
+        patterns_ru=[
+            re.compile(r"\b(?:показание|indication|терапевтическая\s+область|therapeutic\s+area)\s*[:#]?\s*(?P<value>[A-ZА-Я][A-Za-zА-Яа-я0-9\s.,\-]{5,200}?)(?:\.|$|\n)", re.IGNORECASE),
+            re.compile(r"\bдля\s+лечения\s+(?P<value>[A-ZА-Я][A-Za-zА-Яа-я0-9\s.,\-]{5,200}?)(?:\.|$|\n)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:indication|therapeutic\s+area)\s*[:#]?\s*(?P<value>[A-Z][A-Za-z0-9\s.,\-]{5,200}?)(?:\.|$|\n)", re.IGNORECASE),
+            re.compile(r"\bfor\s+the\s+treatment\s+of\s+(?P<value>[A-Z][A-Za-z0-9\s.,\-]{5,200}?)(?:\.|$|\n)", re.IGNORECASE),
+        ],
+        parser=parse_therapeutic_area_value, confidence_policy=confidence_medium, priority=180,
+        preferred_topics=['overview_objectives', 'indication']
+    ))
+
+    # --- STUDY DESIGN (расширение) ---
+    # Design Configuration
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="design.configuration",
+        patterns_ru=[
+            re.compile(r"\b(?:параллельн|parallel)\s+(?:групп|group|дизайн|design)", re.IGNORECASE),
+            re.compile(r"\b(?:перекрестн|crossover|cross-over)\s+(?:дизайн|design)", re.IGNORECASE),
+            re.compile(r"\b(?:факторн|factorial)\s+(?:дизайн|design)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bparallel\s+(?:group|design)\b", re.IGNORECASE),
+            re.compile(r"\b(?:crossover|cross-over)\s+design\b", re.IGNORECASE),
+            re.compile(r"\bfactorial\s+design\b", re.IGNORECASE),
+            re.compile(r"\bsequential\s+design\b", re.IGNORECASE),
+        ],
+        parser=lambda t, m: {"value": _normalize_design_configuration(t)}, confidence_policy=confidence_high, priority=190,
+        preferred_topics=['design_plan']
+    ))
+
+    # Masking (расширение существующего правила)
+    # Уже есть, но добавим дополнительные паттерны
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="design.masking",
+        patterns_ru=[
+            re.compile(r"\b(?:открытое|open-label|open\s+label)\s+(?:исследование|study)", re.IGNORECASE),
+            re.compile(r"\b(?:двойное\s+слепое|double-blind|double\s+blind)\s+(?:исследование|study)", re.IGNORECASE),
+            re.compile(r"\b(?:одинарное\s+слепое|single-blind|single\s+blind)\s+(?:исследование|study)", re.IGNORECASE),
+            re.compile(r"\b(?:заслепленн|ослепленн|blinded)\s+(?:исследование|study)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:open-label|open\s+label)\s+study\b", re.IGNORECASE),
+            re.compile(r"\b(?:double-blind|double\s+blind)\s+study\b", re.IGNORECASE),
+            re.compile(r"\b(?:single-blind|single\s+blind)\s+study\b", re.IGNORECASE),
+            re.compile(r"\b(?:triple-blind|triple\s+blind)\s+study\b", re.IGNORECASE),
+        ],
+        parser=lambda t, m: {"value": _normalize_masking(t)}, confidence_policy=confidence_high, priority=185,
+        preferred_topics=['design_plan']
+    ))
+
+    # Control Type
+    rules.append(ExtractionRule(
+        fact_type="study", fact_key="design.control_type",
+        patterns_ru=[
+            re.compile(r"\b(?:плацебо-контролируем|placebo-controlled|placebo\s+control)\b", re.IGNORECASE),
+            re.compile(r"\b(?:активный\s+контроль|active-controlled|active\s+control)\b", re.IGNORECASE),
+            re.compile(r"\b(?:без\s+контроля|uncontrolled|no\s+control)\b", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bplacebo-controlled\b", re.IGNORECASE),
+            re.compile(r"\bactive-controlled\b", re.IGNORECASE),
+            re.compile(r"\buncontrolled\b", re.IGNORECASE),
+            re.compile(r"\bno\s+control\b", re.IGNORECASE),
+        ],
+        parser=lambda t, m: {"value": _normalize_control_type(t)}, confidence_policy=confidence_high, priority=175,
+        preferred_topics=['design_plan']
+    ))
+
+    # --- POPULATION (расширение) ---
+    # Age Range (минимальный и максимальный возраст уже есть, добавим общий диапазон)
+    rules.append(ExtractionRule(
+        fact_type="population", fact_key="age_range",
+        patterns_ru=[
+            re.compile(r"\b(?:возраст|age)\s*[:\-]?\s*(?:от\s+)?(?P<min>\d+)\s*(?:до|–|-|to)\s*(?P<max>\d+)\s*(?:лет|years?)\b", re.IGNORECASE),
+            re.compile(r"\b(?:возраст|age)\s+(?P<min>\d+)\s*[–\-]\s*(?P<max>\d+)\s*(?:лет|years?)\b", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:age|age\s+range)\s*[:\-]?\s*(?:from\s+)?(?P<min>\d+)\s*(?:to|–|-)\s*(?P<max>\d+)\s*years?\b", re.IGNORECASE),
+            re.compile(r"\b(?:age|age\s+range)\s+(?P<min>\d+)\s*[–\-]\s*(?P<max>\d+)\s*years?\b", re.IGNORECASE),
+        ],
+        parser=parse_age_range_value, confidence_policy=confidence_high, priority=210,
+        preferred_topics=['population_eligibility']
+    ))
+
+    # Gender
+    rules.append(ExtractionRule(
+        fact_type="population", fact_key="gender",
+        patterns_ru=[
+            re.compile(r"\b(?:пол|gender|sex)\s*[:\-]?\s*(?P<value>мужской|женский|оба|все|любой|male|female|both|all)", re.IGNORECASE),
+            re.compile(r"\b(?:мужчин|male|мужской)\s+(?:и\s+)?(?:женщин|female|женский)", re.IGNORECASE),
+            re.compile(r"\b(?:здоровые\s+мужские|healthy\s+male)\s+(?:субъекты|subjects)", re.IGNORECASE),
+            re.compile(r"\b(?:здоровые\s+женские|healthy\s+female)\s+(?:субъекты|subjects)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:gender|sex)\s*[:\-]?\s*(?P<value>male|female|both|all)", re.IGNORECASE),
+            re.compile(r"\b(?:male\s+and\s+female|both\s+genders|all\s+genders)\b", re.IGNORECASE),
+            re.compile(r"\bhealthy\s+male\s+subjects\b", re.IGNORECASE),
+            re.compile(r"\bhealthy\s+female\s+subjects\b", re.IGNORECASE),
+        ],
+        parser=lambda t, m: {"value": _normalize_gender(m.group("value") if "value" in m.groupdict() and m.group("value") else t)}, 
+        confidence_policy=confidence_medium, priority=170,
+        preferred_topics=['population_eligibility']
+    ))
+
+    # Population Type (Healthy Volunteers vs Patients)
+    rules.append(ExtractionRule(
+        fact_type="population", fact_key="population_type",
+        patterns_ru=[
+            re.compile(r"\b(?:здоровые\s+добровольцы|healthy\s+volunteers|здоровые\s+субъекты|healthy\s+subjects)\b", re.IGNORECASE),
+            re.compile(r"\b(?:пациенты|patients|больные)\s+с\s+", re.IGNORECASE),
+            re.compile(r"\b(?:субъекты|subjects)\s+с\s+(?:диабетом|диагнозом)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bhealthy\s+(?:volunteers|subjects)\b", re.IGNORECASE),
+            re.compile(r"\bpatients\s+with\b", re.IGNORECASE),
+            re.compile(r"\bsubjects\s+with\b", re.IGNORECASE),
+        ],
+        parser=lambda t, m: {"value": _normalize_population_type(t)}, confidence_policy=confidence_medium, priority=160,
+        preferred_topics=['population_eligibility']
+    ))
+
+    # --- INTERVENTION / TREATMENT (расширение) ---
+    # IMP Name (расширение существующего ip_name)
+    # Уже есть правило для ip_name, но добавим дополнительные паттерны
+    rules.append(ExtractionRule(
+        fact_type="treatment", fact_key="imp_name",
+        patterns_ru=[
+            re.compile(r"\b(?:исследуемый\s+препарат|test\s+product|investigational\s+product|ип)\s*[:#]?\s*(?P<value>[A-ZА-Я][A-Za-zА-Яа-я0-9\s.\-]{2,50}?)(?:[,.]|$)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:investigational\s+product|test\s+product|ip|study\s+drug)\s*[:#]?\s*(?P<value>[A-Z][A-Za-z0-9\s.\-]{2,50}?)(?:[,.]|$)", re.IGNORECASE),
+        ],
+        parser=parse_ip_name_value, confidence_policy=confidence_medium, priority=195,
+        preferred_topics=['ip_management']
+    ))
+
+    # Treatment Duration
+    rules.append(ExtractionRule(
+        fact_type="treatment", fact_key="treatment_duration",
+        patterns_ru=[
+            re.compile(r"\b(?:длительность\s+лечения|treatment\s+duration|duration\s+of\s+treatment)\b[^0-9]{0,30}(?P<value>\d+\s+(?:недель|месяцев|дней|лет|weeks?|months?|days?|years?))", re.IGNORECASE),
+            re.compile(r"\b(?:лечение|treatment)\s+(?:в\s+течение|for|в\s+течение)\s+(?P<value>\d+\s+(?:недель|месяцев|дней|лет|weeks?|months?|days?|years?))", re.IGNORECASE),
+            re.compile(r"\b(?:прием|administration)\s+(?:в\s+течение|for)\s+(?P<value>\d+\s+(?:недель|месяцев|дней|лет|weeks?|months?|days?|years?))", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:treatment\s+duration|duration\s+of\s+treatment)\b[^0-9]{0,30}(?P<value>\d+\s+(?:weeks?|months?|days?|years?))", re.IGNORECASE),
+            re.compile(r"\b(?:treatment|administration)\s+for\s+(?P<value>\d+\s+(?:weeks?|months?|days?|years?))", re.IGNORECASE),
+            re.compile(r"\bfor\s+(?P<value>\d+\s+(?:weeks?|months?|days?|years?))\s+(?:treatment|administration)", re.IGNORECASE),
+        ],
+        parser=parse_duration_value, confidence_policy=confidence_high, priority=185,
+        preferred_topics=['ip_management']
+    ))
+
+    # --- BIOEQUIVALENCE SPECIFIC ---
+    # Washout Period
+    rules.append(ExtractionRule(
+        fact_type="bioequivalence", fact_key="washout_period",
+        patterns_ru=[
+            re.compile(r"\b(?:период\s+отмывки|washout\s+period|период\s+вымывания)\b[^0-9]{0,30}(?P<value>\d+\s+(?:дн|день|дней|дн\.|days?|weeks?|недель))", re.IGNORECASE),
+            re.compile(r"\b(?:период\s+отмывки|washout)\s+(?:не\s+менее|at\s+least|минимум|minimum)\s+(?P<value>\d+\s+(?:дн|день|дней|дн\.|days?|weeks?|недель))", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bwashout\s+period\b[^0-9]{0,30}(?P<value>\d+\s+(?:days?|weeks?))", re.IGNORECASE),
+            re.compile(r"\bwashout\s+(?:period\s+of\s+)?(?:at\s+least|minimum)\s+(?P<value>\d+\s+(?:days?|weeks?))", re.IGNORECASE),
+        ],
+        parser=parse_washout_period_value, confidence_policy=confidence_high, priority=180,
+        preferred_topics=['design_plan', 'bioequivalence']
+    ))
+
+    # Fasting Condition
+    rules.append(ExtractionRule(
+        fact_type="bioequivalence", fact_key="fasting_condition",
+        patterns_ru=[
+            re.compile(r"\b(?:натощак|fasting|на\s+голодный\s+желудок)\s+(?:условиях|conditions?)\b", re.IGNORECASE),
+            re.compile(r"\b(?:после\s+еды|fed|после\s+приема\s+пищи|non-fasting)\s+(?:условиях|conditions?)\b", re.IGNORECASE),
+            re.compile(r"\b(?:условия|conditions?)\s*[:\-]?\s*(?:натощак|fasting|fed|после\s+еды)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\bfasting\s+conditions?\b", re.IGNORECASE),
+            re.compile(r"\bfed\s+conditions?\b", re.IGNORECASE),
+            re.compile(r"\bnon-fasting\s+conditions?\b", re.IGNORECASE),
+            re.compile(r"\b(?:conditions?|state)\s*[:\-]?\s*(?:fasting|fed|non-fasting)", re.IGNORECASE),
+        ],
+        parser=parse_fasting_condition_value, confidence_policy=confidence_high, priority=175,
+        preferred_topics=['ip_management', 'bioequivalence']
+    ))
+
+    # Blood Sampling Volume
+    rules.append(ExtractionRule(
+        fact_type="bioequivalence", fact_key="blood_sampling_volume",
+        patterns_ru=[
+            re.compile(r"\b(?:объем\s+крови|blood\s+volume|blood\s+sampling\s+volume)\b[^0-9]{0,30}(?P<value>\d+(?:[.,]\d+)?)\s*(?P<unit>мл|ml|л|l)\b", re.IGNORECASE),
+            re.compile(r"\b(?:всего\s+крови|total\s+blood\s+volume)\s+(?:приблизительно|approximately|около|about)\s+(?P<value>\d+(?:[.,]\d+)?)\s*(?P<unit>мл|ml|л|l)\b", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:blood\s+volume|blood\s+sampling\s+volume|total\s+blood\s+volume)\b[^0-9]{0,30}(?P<value>\d+(?:[.,]\d+)?)\s*(?P<unit>ml|l)\b", re.IGNORECASE),
+            re.compile(r"\b(?:approximately|about)\s+(?P<value>\d+(?:[.,]\d+)?)\s*(?P<unit>ml|l)\s+(?:of\s+)?blood\b", re.IGNORECASE),
+        ],
+        parser=parse_blood_volume_value, confidence_policy=confidence_medium, priority=170,
+        preferred_topics=['bioequivalence', 'stats_sample_size']
+    ))
+
+    # PK Parameters
+    rules.append(ExtractionRule(
+        fact_type="bioequivalence", fact_key="pk_parameters",
+        patterns_ru=[
+            re.compile(r"\b(?:pk\s+параметры|pharmacokinetic\s+parameters?|параметры\s+фармакокинетики)\b", re.IGNORECASE),
+            re.compile(r"\b(?:оценке|evaluation|analysis)\s+(?:фармакокинетических\s+параметров|pk\s+parameters)", re.IGNORECASE),
+        ],
+        patterns_en=[
+            re.compile(r"\b(?:pk\s+parameters?|pharmacokinetic\s+parameters?)\b", re.IGNORECASE),
+            re.compile(r"\b(?:evaluation|analysis)\s+of\s+(?:pk|pharmacokinetic)\s+parameters?", re.IGNORECASE),
+            re.compile(r"\b(?:AUC|Cmax|Tmax|T1/2|Half-life)\b", re.IGNORECASE),
+        ],
+        parser=parse_pk_parameters_value, confidence_policy=confidence_low, priority=160,
+        preferred_topics=['endpoints_efficacy', 'bioequivalence']
+    ))
+
     return rules
 
 
@@ -805,12 +1065,100 @@ def _normalize_route(text: str) -> str:
 def _normalize_frequency(text: str) -> str:
     """Нормализует частоту приема."""
     text_lower = text.lower()
-    if "qd" in text_lower or "once daily" in text_lower or "раз в день" in text_lower:
+    if "qd" in text_lower or "once daily" in text_lower or "раз в день" in text_lower or "один раз в день" in text_lower:
         return "qd"
-    if "bid" in text_lower or "twice daily" in text_lower or "дважды в день" in text_lower:
+    if "bid" in text_lower or "twice daily" in text_lower or "дважды в день" in text_lower or "два раза в день" in text_lower:
         return "bid"
-    if "weekly" in text_lower or "еженедел" in text_lower:
+    if "tid" in text_lower or "three times daily" in text_lower or "три раза в день" in text_lower:
+        return "tid"
+    if "qid" in text_lower or "four times daily" in text_lower or "четыре раза в день" in text_lower:
+        return "qid"
+    if "weekly" in text_lower or "еженедел" in text_lower or "qw" in text_lower:
         return "weekly"
+    return "unknown"
+
+
+def _normalize_gender(text: str) -> str:
+    """Нормализует пол (gender)."""
+    text_lower = text.lower()
+    if any(kw in text_lower for kw in ["all", "оба", "both", "все", "любой"]):
+        return "all"
+    if any(kw in text_lower for kw in ["male", "мужск", "мужчин", "мужской"]):
+        return "male"
+    if any(kw in text_lower for kw in ["female", "женск", "женщин", "женский"]):
+        return "female"
+    return "unknown"
+
+
+def _normalize_population_type(text: str) -> str:
+    """Нормализует тип популяции (здоровые добровольцы vs пациенты)."""
+    text_lower = text.lower()
+    if any(kw in text_lower for kw in ["healthy", "здоров", "доброволь", "volunteer"]):
+        return "healthy_volunteers"
+    if any(kw in text_lower for kw in ["patient", "пациент", "больной", "subjects with"]):
+        return "patients"
+    return "unknown"
+
+
+def _normalize_control_type(text: str) -> str:
+    """Нормализует тип контроля."""
+    text_lower = text.lower()
+    if "placebo" in text_lower or "плацебо" in text_lower:
+        return "placebo"
+    if "active" in text_lower or "активн" in text_lower:
+        return "active"
+    if "uncontrolled" in text_lower or "неконтрол" in text_lower or "без контроля" in text_lower:
+        return "uncontrolled"
+    return "unknown"
+
+
+def _normalize_design_configuration(text: str) -> str:
+    """Нормализует конфигурацию дизайна (parallel, crossover, factorial)."""
+    text_lower = text.lower()
+    if "crossover" in text_lower or "кроссовер" in text_lower or "cross-over" in text_lower:
+        return "crossover"
+    if "parallel" in text_lower or "параллельн" in text_lower:
+        return "parallel"
+    if "factorial" in text_lower or "фактор" in text_lower:
+        return "factorial"
+    if "sequential" in text_lower or "последовательно" in text_lower:
+        return "sequential"
+    return "unknown"
+
+
+def _normalize_masking(text: str) -> str:
+    """Нормализует тип ослепления (маскирование)."""
+    text_lower = text.lower()
+    if "open" in text_lower or "открыт" in text_lower or "open-label" in text_lower:
+        return "open-label"
+    if "double" in text_lower or "двойн" in text_lower or "double-blind" in text_lower:
+        return "double-blind"
+    if "single" in text_lower or "одинарн" in text_lower or "single-blind" in text_lower:
+        return "single-blind"
+    if "triple" in text_lower or "тройн" in text_lower or "triple-blind" in text_lower:
+        return "triple-blind"
+    return "unknown"
+
+
+def _normalize_phase(text: str) -> str:
+    """Нормализует фазу исследования."""
+    text_lower = text.lower()
+    # Римские цифры и арабские
+    phase_match = re.search(r"phase\s*[:\-]?\s*([I1-4IV]+(?:[–\-/]?[I1-4IV]+)?)", text, re.IGNORECASE)
+    if phase_match:
+        phase_val = phase_match.group(1).upper().strip()
+        # Нормализуем римские цифры
+        phase_val = phase_val.replace("1", "I").replace("2", "II").replace("3", "III").replace("4", "IV")
+        return phase_val
+    # Текстовые варианты
+    if any(kw in text_lower for kw in ["phase i", "фаза i", "первой фазы"]):
+        return "I"
+    if any(kw in text_lower for kw in ["phase ii", "фаза ii", "второй фазы"]):
+        return "II"
+    if any(kw in text_lower for kw in ["phase iii", "фаза iii", "третьей фазы"]):
+        return "III"
+    if any(kw in text_lower for kw in ["phase iv", "фаза iv", "четвертой фазы"]):
+        return "IV"
     return "unknown"
 
 
@@ -822,5 +1170,169 @@ def _parse_dose(text: str, match: re.Match) -> dict[str, Any] | None:
         value = parse_float(value_str)
         if value is not None:
             return {"value": value, "unit": unit_str.strip() if unit_str else None}
+    return None
+
+
+def parse_protocol_id_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит ID протокола."""
+    # Пробуем извлечь из именованной группы
+    if "value" in match.groupdict() and match.group("value"):
+        val = match.group("value")
+    elif match.lastindex and match.lastindex >= 1:
+        val = match.group(1)
+    else:
+        val = match.group(0)
+    
+    if not val:
+        return None
+    normalized = normalize_whitespace(val)
+    # Ограничиваем длину протокольного ID
+    if len(normalized) > 64:
+        normalized = normalized[:64].rstrip()
+    return {"value": normalized}
+
+
+def parse_therapeutic_area_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит терапевтическую область после ключевых слов."""
+    # Пробуем извлечь из именованной группы
+    if "value" in match.groupdict() and match.group("value"):
+        val = match.group("value")
+    elif match.lastindex and match.lastindex >= 1:
+        val = match.group(1)
+    else:
+        val = match.group(0)
+    
+    if not val:
+        return None
+    normalized = normalize_whitespace(val)
+    # Ограничиваем длину
+    if len(normalized) > 200:
+        normalized = normalized[:200].rstrip()
+    # Проверяем, что значение начинается с заглавной буквы
+    if normalized and normalized[0].islower():
+        return None
+    return {"value": normalized}
+
+
+def parse_age_max_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит максимальный возраст."""
+    if match.lastindex and match.lastindex >= 2:
+        val = parse_int(match.group(2))
+        if val is not None:
+            return {"value": val}
+    # Пробуем найти возраст после диапазона
+    age_pattern = r"(\d+)\s*(?:до|–|-|to)\s*(\d+)"
+    m = re.search(age_pattern, text, re.IGNORECASE)
+    if m and m.lastindex >= 2:
+        val = parse_int(m.group(2))
+        if val is not None:
+            return {"value": val}
+    return None
+
+
+def parse_age_range_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит диапазон возраста."""
+    # Пробуем извлечь из именованных групп
+    if "min" in match.groupdict() and "max" in match.groupdict():
+        min_val = parse_int(match.group("min"))
+        max_val = parse_int(match.group("max"))
+        if min_val is not None and max_val is not None and min_val <= max_val:
+            return {"value": {"min": min_val, "max": max_val}, "raw": match.group(0)}
+    # Fallback на общий парсер диапазона
+    raw = match.group(0)
+    range_dict = parse_range(raw)
+    if range_dict is None:
+        return None
+    return {"value": range_dict, "raw": raw}
+
+
+def parse_washout_period_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит период отмывки."""
+    # Пробуем извлечь из именованной группы
+    if "value" in match.groupdict() and match.group("value"):
+        raw = match.group("value")
+    elif match.lastindex and match.lastindex >= 1:
+        raw = match.group(1)
+    else:
+        raw = match.group(0)
+    
+    duration = parse_duration(raw)
+    if duration is None:
+        # Пробуем извлечь только число дней
+        days_match = re.search(r"(\d+)\s*(?:дн|день|days?)", raw, re.IGNORECASE)
+        if days_match:
+            days_val = parse_int(days_match.group(1))
+            if days_val is not None:
+                return {"value": {"value": days_val, "unit": "day"}, "raw": raw}
+    return {"value": duration, "raw": raw} if duration else None
+
+
+def parse_blood_volume_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит объем крови с единицами измерения."""
+    # Пробуем извлечь из именованных групп
+    if "value" in match.groupdict() and match.group("value"):
+        val_str = match.group("value")
+        unit_str = match.group("unit") if "unit" in match.groupdict() and match.group("unit") else None
+    elif match.lastindex and match.lastindex >= 1:
+        val_str = match.group(1)
+        unit_str = match.group(2) if match.lastindex >= 2 else None
+    else:
+        # Пробуем извлечь из полного текста
+        volume_match = re.search(r"(\d+(?:[.,]\d+)?)\s*(мл|ml|л|l)", text, re.IGNORECASE)
+        if volume_match:
+            val_str = volume_match.group(1)
+            unit_str = volume_match.group(2)
+        else:
+            return None
+    
+    if not val_str:
+        return None
+    value = parse_float(val_str)
+    if value is None:
+        return None
+    unit = unit_str.strip().lower() if unit_str else "ml"
+    # Нормализуем единицы
+    if unit in ["мл", "ml"]:
+        unit = "ml"
+    elif unit in ["л", "l"]:
+        unit = "l"
+    return {"value": value, "unit": unit}
+
+
+def parse_pk_parameters_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит список PK параметров (AUC, Cmax, Tmax, T1/2 и т.д.)."""
+    # Извлекаем все PK параметры из текста
+    pk_params = []
+    param_patterns = [
+        r"\bAUC(?:0[–\-]?∞|0[–\-]?inf|last|t)\b",
+        r"\bCmax\b",
+        r"\bTmax\b",
+        r"\bT\s*1/2\b",
+        r"\bT\s*½\b",
+        r"\bHalf-life\b",
+        r"\bПериод\s+полувыведения\b",
+        r"\bKe\b",
+        r"\bVd\b",
+        r"\bCL\b",
+        r"\bClearance\b",
+    ]
+    for pattern in param_patterns:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            param = m.group(0).upper()
+            if param not in pk_params:
+                pk_params.append(param)
+    if not pk_params:
+        return None
+    return {"value": pk_params}
+
+
+def parse_fasting_condition_value(text: str, match: re.Match) -> dict[str, Any] | None:
+    """Парсит условие приема пищи (натощак/после еды)."""
+    # Используем полный текст для определения условия
+    text_lower = text.lower()
+    if any(kw in text_lower for kw in ["fasting", "натощак", "на голодный желудок"]):
+        return {"value": "fasting"}
+    if any(kw in text_lower for kw in ["fed", "после еды", "после приема пищи", "non-fasting", "после еды"]):
+        return {"value": "fed"}
     return None
 

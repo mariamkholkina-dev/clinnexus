@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import studies, documents, generation, conflicts, impact, sections, passport_tuning, topics
+from app.api.v1 import studies, documents, generation, conflicts, impact, sections, passport_tuning, topics, export
 
 router = APIRouter()
 
@@ -12,5 +12,6 @@ router.include_router(conflicts.router, tags=["conflicts"])
 router.include_router(impact.router, tags=["impact"])
 router.include_router(topics.router, tags=["topics"])
 router.include_router(passport_tuning.router, prefix="/passport-tuning")
+router.include_router(export.router, tags=["export"])
 
 

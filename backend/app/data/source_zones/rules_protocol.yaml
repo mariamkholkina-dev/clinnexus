@@ -1,201 +1,177 @@
-# Правила классификации source_zone для протоколов
+# Правила классификации source_zone для протоколов КИ согласно Правилам GCP ЕАЭС (Решение № 79, Раздел 6)
 # Формат: section_path (строка вида H1/H2/H3) сопоставляется с source_zone на основе regex-паттернов
 # Матч происходит по любому сегменту пути
 # 
 # 12 канонических зон для protocol:
-# overview, design, ip, statistics, safety, endpoints, population, procedures, 
+# overview, design, population, ip, endpoints, procedures, safety, statistics, 
 # data_management, ethics, admin, appendix
+#
+# Порядок правил важен: более специфичные правила проверяются первыми
 
 source_zones:
-  # 1. Overview / Обзор
+  # 1. Overview / Общая информация
   - zone: "overview"
     patterns:
       ru:
-        - "(?i).*введение.*"
-        - "(?i).*обоснован.*"
-        - "(?i).*синопсис.*"
-        - "(?i).*кратк.*описан.*"
+        - "(?i)^общая информация"
+        - "(?i)^обоснование"
+        - "(?i)^цели и задачи"
+        - "(?i)^синопсис"
+        - "(?i)^введение"
+        - "(?i)^резюме"
       en:
-        - "(?i).*background.*"
-        - "(?i).*rationale.*"
-        - "(?i).*synopsis.*"
-        - "(?i).*introduction.*"
+        - "(?i)^general information"
+        - "(?i)^background"
+        - "(?i)^objectives"
+        - "(?i)^synopsis"
+        - "(?i)^introduction"
 
   # 2. Design / Дизайн исследования
   - zone: "design"
     patterns:
       ru:
-        - "(?i).*дизайн.*исследован.*"
-        - "(?i).*метод.*исследован.*"
-        - "(?i).*план.*исследован.*"
-        - "(?i).*рандомизац.*"
-        - "(?i).*ослеплен.*"
+        - "(?i)^дизайн(а)? исследовани(я|й)"
+        - "(?i)^методология"
+        - "(?i)^рандомизация"
+        - "(?i)^ослепление"
       en:
-        - "(?i).*study.*design.*"
-        - "(?i).*methodology.*"
-        - "(?i).*plan.*of.*study.*"
-        - "(?i).*randomi[sz]ation.*"
-        - "(?i).*blinding.*"
+        - "(?i)^trial design"
+        - "(?i)^study design"
+        - "(?i)^methodology"
+        - "(?i)^randomi[sz]ation"
+        - "(?i)^blinding"
 
-  # 3. IP / Исследуемый препарат
-  - zone: "ip"
-    patterns:
-      ru:
-        - "(?i).*исследуемый.*препарат.*"
-        - "(?i).*дозир.*"
-        - "(?i).*режим.*доз.*"
-        - "(?i).*ИП.*"
-        - "(?i).*IMP.*"
-        - "(?i).*сопутствующ.*препарат.*"
-      en:
-        - "(?i).*investigational.*product.*"
-        - "(?i).*study.*drug.*"
-        - "(?i).*dosing.*"
-        - "(?i).*dose.*regimen.*"
-        - "(?i).*IP.*"
-        - "(?i).*IMP.*"
-        - "(?i).*concomitant.*"
-
-  # 4. Statistics / Статистика
-  - zone: "statistics"
-    patterns:
-      ru:
-        - "(?i).*статист.*"
-        - "(?i).*план.*статист.*"
-        - "(?i).*статистическ.*метод.*"
-        - "(?i).*статистическ.*анализ.*"
-        - "(?i).*SAP.*"
-      en:
-        - "(?i).*statistic.*"
-        - "(?i).*statistical.*method.*"
-        - "(?i).*statistical.*analysis.*"
-        - "(?i).*analysis.*plan.*"
-        - "(?i).*SAP.*"
-
-  # 5. Safety / Безопасность
-  - zone: "safety"
-    patterns:
-      ru:
-        - "(?i).*безопас.*"
-        - "(?i).*нежелательн.*явлени.*"
-        - "(?i).*нежелательн.*реакц.*"
-        - "(?i).*SAE.*"
-        - "(?i).*НЯ.*"
-        - "(?i).*фармаконадзор.*"
-      en:
-        - "(?i).*safety.*"
-        - "(?i).*adverse.*event.*"
-        - "(?i).*adverse.*reaction.*"
-        - "(?i).*SAE.*"
-        - "(?i).*pharmacovigil.*"
-
-  # 6. Endpoints / Конечные точки
-  - zone: "endpoints"
-    patterns:
-      ru:
-        - "(?i).*конечн.*"
-        - "(?i).*endpoint.*"
-        - "(?i).*эффективност.*"
-        - "(?i).*первичн.*конечн.*точк.*"
-        - "(?i).*вторичн.*конечн.*точк.*"
-      en:
-        - "(?i).*endpoint.*"
-        - "(?i).*efficacy.*"
-        - "(?i).*primary.*endpoint.*"
-        - "(?i).*secondary.*endpoint.*"
-
-  # 7. Population / Популяция
+  # 3. Population / Популяция и критерии отбора
   - zone: "population"
     patterns:
       ru:
-        - "(?i).*критер.*"
-        - "(?i).*включен.*"
-        - "(?i).*невключен.*"
-        - "(?i).*критери.*включен.*"
-        - "(?i).*критери.*исключен.*"
-        - "(?i).*отбор.*пациент.*"
+        - "(?i)^отбор.*субъектов"
+        - "(?i)^критерии включения"
+        - "(?i)^популяци(я|и)"
+        - "(?i)^критерии исключения"
       en:
-        - "(?i).*eligibility.*"
-        - "(?i).*inclusion.*criter.*"
-        - "(?i).*exclusion.*criter.*"
-        - "(?i).*withdraw.*"
-        - "(?i).*patient.*selection.*"
+        - "(?i)^selection.*subjects"
+        - "(?i)^inclusion criteria"
+        - "(?i)^population"
+        - "(?i)^exclusion criteria"
 
-  # 8. Procedures / Процедуры
+  # 4. IP / Исследуемый препарат
+  - zone: "ip"
+    patterns:
+      ru:
+        - "(?i)^лечение субъектов"
+        - "(?i)^исследуемый препарат"
+        - "(?i)^дозиров(ка|ание)"
+        - "(?i)^сопутствующая терапия"
+      en:
+        - "(?i)^treatment of subjects"
+        - "(?i)^investigational product"
+        - "(?i)^dosing"
+        - "(?i)^concomitant (medication|therapy)"
+
+  # 5. Endpoints / Конечные точки и критерии эффективности
+  - zone: "endpoints"
+    patterns:
+      ru:
+        - "(?i)^конечные точки"
+        - "(?i)^переменные эффективности"
+        - "(?i)^критерии эффективности"
+        - "(?i)^фармакокинетические параметры"
+      en:
+        - "(?i)^endpoints"
+        - "(?i)^efficacy variables"
+        - "(?i)^efficacy criteria"
+        - "(?i)^pharmacokinetic parameters"
+
+  # 6. Procedures / Методы, процедуры и график визитов
   - zone: "procedures"
     patterns:
       ru:
-        - "(?i).*визит.*"
-        - "(?i).*процедур.*"
-        - "(?i).*обслед.*"
-        - "(?i).*посещен.*"
-        - "(?i).*график.*визит.*"
+        - "(?i)^оценка эффективности"
+        - "(?i)^график.*(визитов|процедур)"
+        - "(?i)^процедуры"
+        - "(?i)^лабораторные (анализы|тесты)"
       en:
-        - "(?i).*visit.*"
-        - "(?i).*procedure.*"
-        - "(?i).*procedures.*"
-        - "(?i).*assessment.*"
-        - "(?i).*schedule.*of.*activities.*"
-        - "(?i).*SoA.*"
+        - "(?i)^assessment of efficacy"
+        - "(?i)^schedule of (events|assessments)"
+        - "(?i)^procedures"
+        - "(?i)^laboratory"
+
+  # 7. Safety / Оценка безопасности (специфичные правила выше общих)
+  - zone: "safety"
+    patterns:
+      ru:
+        - "(?i)^оценка безопасности"
+        - "(?i)^нежелательные (явления|реакции)"
+        - "(?i)^фармаконадзор"
+        - "(?i)^безопасность"
+      en:
+        - "(?i)^assessment of safety"
+        - "(?i)^adverse (events|reactions)"
+        - "(?i)^pharmacovigilance"
+        - "(?i)^safety"
+
+  # 8. Statistics / Статистика
+  - zone: "statistics"
+    patterns:
+      ru:
+        - "(?i)^статистик(а)"
+        - "(?i)^статистические методы"
+        - "(?i)^размер выборки"
+      en:
+        - "(?i)^statistics"
+        - "(?i)^statistical methods"
+        - "(?i)^sample size"
 
   # 9. Data Management / Управление данными
   - zone: "data_management"
     patterns:
       ru:
-        - "(?i).*данн.*"
-        - "(?i).*EDC.*"
-        - "(?i).*eCRF.*"
-        - "(?i).*кодирован.*"
-        - "(?i).*управлен.*данн.*"
-        - "(?i).*confidential.*"
+        - "(?i)^работа с данными"
+        - "(?i)^сбор данных"
+        - "(?i)^хранение записей"
+        - "(?i)^управление данными"
       en:
-        - "(?i).*data.*management.*"
-        - "(?i).*EDC.*"
-        - "(?i).*eCRF.*"
-        - "(?i).*data.*collection.*"
-        - "(?i).*confidential.*"
+        - "(?i)^data handling"
+        - "(?i)^record keeping"
+        - "(?i)^data management"
 
   # 10. Ethics / Этика
   - zone: "ethics"
     patterns:
       ru:
-        - "(?i).*этик.*"
-        - "(?i).*согласие.*"
-        - "(?i).*информирован.*согласие.*"
-        - "(?i).*ЭК.*"
-        - "(?i).*регулятор.*"
+        - "(?i)^этика"
+        - "(?i)^этические (вопросы|аспекты)"
+        - "(?i)^информированное согласие"
       en:
-        - "(?i).*ethics.*"
-        - "(?i).*consent.*"
-        - "(?i).*informed.*consent.*"
-        - "(?i).*EC.*"
-        - "(?i).*IRB.*"
-        - "(?i).*regulatory.*"
+        - "(?i)^ethics"
+        - "(?i)^ethical"
+        - "(?i)^informed consent"
 
   # 11. Admin / Администрирование
   - zone: "admin"
     patterns:
       ru:
-        - "(?i).*монитор.*"
-        - "(?i).*аудит.*"
-        - "(?i).*quality.*"
-        - "(?i).*организац.*"
-        - "(?i).*SDV.*"
-        - "(?i).*контроль.*качеств.*"
+        - "(?i)^прямой доступ"
+        - "(?i)^контроль качества"
+        - "(?i)^финансирование"
+        - "(?i)^страхование"
+        - "(?i)^публикаци(я|и)"
       en:
-        - "(?i).*monitoring.*"
-        - "(?i).*audit.*"
-        - "(?i).*quality.*"
-        - "(?i).*organization.*"
-        - "(?i).*SDV.*"
+        - "(?i)^direct access"
+        - "(?i)^quality control"
+        - "(?i)^financing"
+        - "(?i)^insurance"
+        - "(?i)^publication"
 
   # 12. Appendix / Приложение
   - zone: "appendix"
     patterns:
       ru:
-        - "(?i).*приложен.*"
-        - "(?i).*приложени.*"
+        - "(?i)^приложени(е|я)"
+        - "(?i)^дополнения"
       en:
-        - "(?i).*appendix.*"
-        - "(?i).*annex.*"
+        - "(?i)^appendix"
+        - "(?i)^appendices"
+        - "(?i)^supplements"
 

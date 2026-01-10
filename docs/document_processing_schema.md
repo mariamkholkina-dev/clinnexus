@@ -7,7 +7,10 @@
 **Что происходит:**
 - Файл сохраняется в локальное хранилище (`backend/.data/uploads/{version_id}/`)
 - Вычисляется SHA256 хеш файла
-- Автоматически определяется язык документа (для DOCX)
+- Автоматически определяется язык документа (для DOCX):
+  - Анализ соотношения кириллических и латинских букв (первые ~50,000 символов)
+  - Проверка наличия bilingual two-column таблиц (двухколоночных таблиц с русским и английским текстом в парах ячеек)
+  - Результат: `ru` (≥70% кириллицы), `en` (≥70% латиницы), `mixed` (оба языка или обнаружены bilingual таблицы), `unknown` (неопределён)
 - Обновляется `DocumentVersion`:
   - `source_file_uri` — путь к файлу
   - `source_sha256` — хеш файла
@@ -26,12 +29,30 @@
 
 **Процесс координируется через `IngestionService.ingest()`:**
 
+**Порядок выполнения шагов:**
+1. Очистка предыдущих данных (chunks, anchors, facts)
+2. Парсинг структуры документа (DocxIngestor) → создание anchors
+3. Извлечение SoA (Шаг 5) → создание cell anchors и SoA-фактов
+4. Создание chunks (Narrative Index) (Шаг 6)
+5. Выравнивание якорей с предыдущей версией (Anchor Alignment, Шаг 6.1) — если есть предыдущая версия
+6. Извлечение фактов (Rules-first, Шаг 5.5) → создание facts и fact_evidence
+7. Проверка согласованности фактов (Fact Consistency Check, Шаг 5.6)
+8. Маппинг секций (Section Mapping, Шаг 6)
+9. LLM-assist для проблемных секций (Шаг 6.1, опционально, автоматически)
+10. Topic Mapping (Шаг 7, только для протоколов)
+11. Quality Gate и финализация → обновление IngestionRun и DocumentVersion
+
 **Отслеживание процесса:**
 - Создаётся запись `IngestionRun` в таблице `ingestion_runs` для отслеживания процесса ингестии (миграция 0013)
+  - Статус: `partial` (в начале) → `ok` (при успехе) или `failed` (при ошибке)
+  - Сохраняются: `pipeline_version` (git SHA), `pipeline_config_hash`, `duration_ms`
 - Собираются метрики через `MetricsCollector` (количество anchors, chunks, фактов, качество маппинга и т.д.)
+  - Метрики собираются на каждом шаге с таймингами
+  - Финализируются в `summary_json` через `metrics_collector.metrics.to_summary_json()`
 - Применяется `QualityGate` для оценки качества ингестии
 - Результаты сохраняются в `ingestion_runs.summary_json`, `ingestion_runs.quality_json`, `ingestion_runs.warnings_json` и `ingestion_runs.errors_json`
 - Связь с `document_versions` через `last_ingestion_run_id`
+- Зеркалирование `summary_json` в `document_versions.ingestion_summary_json` для обратной совместимости
 
 ### Шаг 2.1: Очистка предыдущих данных
 - Удаляются старые `chunks` для этой версии
@@ -39,6 +60,16 @@
 - Удаляются `facts` и `fact_evidence`, созданные из этой версии
 
 ### Шаг 2.2: Парсинг структуры документа (DocxIngestor)
+
+**Сервис:** `DocxIngestor.ingest()`
+
+**Особенности обработки:**
+- Поддержка таймаута обработки (по умолчанию 600 секунд = 10 минут)
+- Проверка таймаута каждые 100 параграфов для оптимизации
+- Двухпроходная детекция заголовков:
+  1. Первый проход: детект через style/outline/numbering (без visual fallback)
+  2. Если заголовков мало (< 3 на документ > 50 параграфов) → второй проход с visual fallback
+- Визуальный fallback для заголовков: анализ форматирования (жирный, размер шрифта) при отсутствии стилей
 
 **Классификация source_zone:**
 - Для каждого anchor выполняется классификация через `SourceZoneClassifier`
@@ -49,33 +80,53 @@
 
 **Что извлекается:**
 - Параграфы (`p`) — обычный текст
-- Заголовки (`hdr`) — определяются через стили/outline/visual fallback
-- Элементы списков (`li`) — через numbering properties
-- Сноски (`fn`) — если доступны через python-docx
-- Структура разделов (`section_path`) — иерархия заголовков
+- Заголовки (`hdr`) — определяются через `HeadingDetector`:
+  - Приоритет: стили (style) → outline → numbering → visual fallback
+  - Visual fallback включается автоматически, если заголовков мало (< 3 на документ > 50 параграфов)
+  - Только "реальные" заголовки (style/outline) обновляют стек заголовков для `section_path`
+  - Numbering/visual заголовки до первого реального заголовка обрабатываются как обычные параграфы
+- Элементы списков (`li`) — через `is_list_item()` (проверка numbering properties и стилей, начинающихся с "List")
+- Сноски (`fn`) — если доступны через `doc.part.footnotes_part.footnotes` в python-docx
+- Структура разделов (`section_path`) — иерархия заголовков:
+  - Нормализуется через `normalize_section_path()` (trim + collapse spaces)
+  - Формат: `"H1/H2/H3"` для иерархии заголовков или `"ROOT"` для корня
+  - До первого реального заголовка используется `"__FRONTMATTER__"`
+  - Для сносок используется `"FOOTNOTES"`
 
 **Как создаются Anchors:**
 
 Для каждого элемента создаётся `Anchor` с полями:
 - `anchor_id` — формат зависит от типа:
-  - Для paragraph-anchors (P/LI/HDR): `{doc_version_id}:{content_type}:{para_index}:{hash(text_norm)}`
-  - Для footnotes (FN): `{doc_version_id}:fn:{fn_index}:{fn_para_index}:{hash(text_norm)}`
-- `section_path` — путь по структуре документа (например, "3.2.1" или "__FRONTMATTER__"), не входит в anchor_id
+  - Для paragraph-anchors (P/LI/HDR): `{doc_version_id}:{content_type}:{hash16}` (с суффиксом `:v{count}` при дубликатах)
+    - `hash16` — первые 16 символов SHA256 хеша от `{text_norm}:{section_path[:64]}`
+    - **ВАЖНО:** Хеш вычисляется БЕЗ `doc_version_id` для правильной работы `AnchorAligner` при сравнении версий
+    - `para_index` НЕ входит в anchor_id для стабильности при изменениях структуры
+  - Для footnotes (FN): `{doc_version_id}:fn:{hash16}` (с суффиксом `:v{count}` при дубликатах)
+    - `hash16` — первые 16 символов SHA256 хеша от нормализованного текста сноски (без section_path)
+  - Для cell-anchors (CELL): `{doc_version_id}:cell:{table_index}:{row_idx}:{col_idx}:{hash16}`
+    - `hash16` — первые 16 символов SHA256 хеша от нормализованного текста ячейки
+- `section_path` — путь по структуре документа (например, "H1/H2/H3" или "__FRONTMATTER__" или "FOOTNOTES"), не входит в anchor_id
+  - Используется в хеше для paragraph-anchors для различения одинаковых абзацев в разных разделах
+  - До первого реального заголовка (style/outline) используется `__FRONTMATTER__`
+  - Для сносок используется `FOOTNOTES`
 - `content_type` — тип контента (hdr/p/li/fn/cell/tbl)
-- `ordinal` — порядковый номер в секции (не входит в anchor_id)
+- `ordinal` — порядковый номер в секции (не входит в anchor_id, используется только для UI/структуры)
 - `text_raw` — исходный текст
-- `text_norm` — нормализованный текст (whitespace collapsed)
-- `text_hash` — SHA256 хеш нормализованного текста
-- `location_json` — метаданные (para_index, fn_index, fn_para_index, style, section_path)
+- `text_norm` — нормализованный текст (whitespace collapsed через `normalize_text()`)
+- `text_hash` — SHA256 хеш нормализованного текста (полный, 64 символа)
+- `location_json` — метаданные (para_index, fn_index, fn_para_index, style, section_path, table_index, row_idx, col_idx)
 - `source_zone` — зона источника (ENUM: один из 12 канонических ключей + "unknown") для классификации контента
   - Канонические ключи: `overview`, `design`, `ip`, `statistics`, `safety`, `endpoints`, `population`, `procedures`, `data_management`, `ethics`, `admin`, `appendix`
   - Классификация выполняется через `SourceZoneClassifier` на основе `section_path` и `heading_text`
 - `language` — язык контента (ru/en/mixed/unknown) для многоязычных документов
+  - Определяется локально для каждого anchor через `detect_text_language()` (regex на кириллицу/латиницу)
 
 **Хранение:**
 - Таблица `anchors` — все атомарные элементы документа
 
-### Шаг 2.3: Извлечение Schedule of Activities (SoA)
+### Шаг 2.3: Извлечение Schedule of Activities (SoA) (Шаг 5 в коде)
+
+**Порядок выполнения:** Выполняется после парсинга anchors (Шаг 2.2), но до создания chunks (Шаг 2.4)
 
 **Сервис:** `SoAExtractionService.extract_soa()`
 
@@ -88,15 +139,19 @@
 - Создание `cell` anchors для ячеек таблицы
 
 **Хранение:**
-- Дополнительные `anchors` с `content_type=cell`
+- Дополнительные `anchors` с `content_type=cell` для ячеек таблицы SoA
 - Таблица `facts`:
   - `fact_type="soa"`, `fact_key="visits"` — список визитов
   - `fact_type="soa"`, `fact_key="procedures"` — список процедур
   - `fact_type="soa"`, `fact_key="matrix"` — матрица визиты × процедуры
   - `status` определяется на основе `confidence`: `extracted` (≥0.7) или `needs_review` (<0.7)
+  - **Важно:** Перед созданием новых SoA-фактов удаляются ранее сохранённые факты по `(study_id, fact_type="soa", fact_key in ["visits", "procedures", "matrix"])` для избежания конфликта уникального индекса `uq_facts_study_type_key`
 - Таблица `fact_evidence` — связь фактов с `anchor_id` ячеек (ограничение: первые 100 для matrix)
+- Если SoA не найден для протокола, добавляется предупреждение в `warnings_json`
 
 ### Шаг 2.4: Создание Chunks (Narrative Index)
+
+**Порядок выполнения:** Выполняется после извлечения SoA (Шаг 2.3) и создания cell anchors
 
 **Сервис:** `ChunkingService.rebuild_chunks_for_doc_version()`
 
@@ -120,15 +175,21 @@
 **Хранение:**
 - Таблица `chunks` — векторный индекс для семантического поиска
 
-### Шаг 2.4.1: Выравнивание якорей с предыдущей версией (Anchor Alignment)
+### Шаг 2.6.1: Выравнивание якорей с предыдущей версией (Anchor Alignment)
+
+**Порядок выполнения:** Выполняется после создания chunks (Шаг 2.4), но до извлечения фактов (Шаг 2.5)
 
 **Сервис:** `AnchorAligner.align()`
 
 **Что происходит:**
-- Поиск предыдущей версии документа по `document_id` и `effective_date` (или `created_at`)
+- Поиск предыдущей версии документа по `document_id` и `effective_date` (или `created_at`, если `effective_date` NULL)
+  - Если `effective_date` задан, ищется версия с `effective_date < current_effective_date` (самая последняя предыдущая версия)
+  - Если `effective_date` не задан (NULL), используется `created_at < current_created_at` (самая последняя предыдущая версия)
+  - Выбирается самая последняя предыдущая версия по соответствующему полю
 - Выравнивание якорей текущей версии с якорями предыдущей версии
 - Создание `anchor_matches` — соответствия между якорями разных версий
 - Использование методов: exact match, fuzzy match, embedding similarity, hybrid
+- **Важно:** Хеш в `anchor_id` вычисляется БЕЗ `doc_version_id`, что позволяет `AnchorAligner` находить одинаковые якоря в разных версиях
 
 **Хранение:**
 - Таблица `anchor_matches`:
@@ -141,11 +202,13 @@
 - Метрики выравнивания: количество matched и changed anchors
 - Сохранение в `summary_json.matched_anchors` и `summary_json.changed_anchors`
 
-**Примечание:** Выполняется после создания chunks для обеспечения возможности сравнения версий документов и анализа изменений.
+**Примечание:** Выполняется после создания chunks для обеспечения возможности сравнения версий документов и анализа изменений. Если предыдущей версии нет, шаг пропускается.
 
-### Шаг 2.5: Извлечение фактов (Rules-first)
+### Шаг 2.5.5: Извлечение фактов (Rules-first)
 
 **Сервис:** `FactExtractionService.extract_and_upsert()`
+
+**Порядок выполнения:** Выполняется после создания chunks и выравнивания якорей (Anchor Alignment, Шаг 2.6.1)
 
 **Что извлекается (через regex-правила):**
 - `protocol_meta / protocol_version` — версия протокола
@@ -155,12 +218,11 @@
 
 **Процесс:**
 1. Загрузка anchors (hdr/p/li/fn), сортировка
-2. Поиск паттернов в тексте
-3. Upsert в `facts` по `(study_id, fact_type, fact_key)`
+2. Поиск паттернов в тексте через правила извлечения
+3. Upsert в `facts` по `(study_id, fact_type, fact_key)` (уникальный индекс)
 4. Создание `fact_evidence` — связь факта с `anchor_id`
-5. Определение `status` на основе качества извлечения (extracted/needs_review)
-
-**Примечание:** Выполняется после создания chunks и извлечения SoA, чтобы все anchors были доступны.
+5. Определение `status` на основе качества извлечения (extracted/needs_review/validated/conflicting)
+6. Применение `ValueNormalizer` для сложных значений (Double Check через LLM, если доступна)
 
 **Хранение:**
 - Таблица `facts`:
@@ -239,9 +301,11 @@
 - **Конфликт:** regex извлекает `{"value": 120}`, LLM нормализует в `{"value": 100}`, не совпадают → статус `conflicting`
 - **Список соотношений:** regex извлекает `{"value": ["2:1", "1:1", "3:2"]}`, LLM выбирает главное `{"value": "2:1"}`, содержится в списке → статус `validated`, используется LLM-результат
 
-### Шаг 2.5.1: Проверка согласованности фактов (Fact Consistency Check)
+### Шаг 2.5.6: Проверка согласованности фактов (Fact Consistency Check)
 
 **Сервис:** `FactConsistencyService.check_study_consistency()`
+
+**Порядок выполнения:** Выполняется сразу после извлечения фактов (Шаг 2.5.5)
 
 **Что проверяется:**
 - Логические несоответствия между фактами исследования
@@ -249,21 +313,25 @@
 - Обнаруженные конфликты сохраняются в таблице `conflicts`
 
 **Результат:**
-- Количество найденных конфликтов
+- Количество найденных конфликтов (сохраняется в `summary_json.conflicts_found`)
 - Если найдены конфликты, устанавливается флаг `needs_review`
 - Предупреждения добавляются в `warnings_json`
 
-**Примечание:** Выполняется после извлечения фактов для выявления логических несоответствий в данных исследования.
+**Примечание:** Выполняется после извлечения фактов для выявления логических несоответствий в данных исследования. Результаты используются в Quality Gate.
 
 ### Шаг 2.6: Маппинг секций (Section Mapping)
 
 **Сервис:** `SectionMappingService.map_sections()`
 
+**Порядок выполнения:** Выполняется после извлечения фактов (Шаг 2.5.5) и проверки согласованности (Шаг 2.5.6)
+
 **Что происходит:**
 - Автоматическое сопоставление семантических секций (`target_section`) с `section_path` документа
 - Поиск заголовков, соответствующих секциям из `target_section_contracts`
-- Создание `target_section_maps` — связь `target_section` с `anchor_ids` и `chunk_ids`
+- Использование сигналов из `retrieval_recipe_json.signals` (must_keywords, should_keywords, not_keywords, regex_patterns)
+- Создание `target_section_maps` — связь `target_section` с `anchor_ids[]` и `chunk_ids[]`
 - `target_section` должен быть одним из 12 канонических ключей (валидация в моделях и схемах)
+- Применение QC через `SectionMappingQCGate` на основе `qc_ruleset_json` из контракта
 - **ПРИМЕЧАНИЕ**: Таблицы taxonomy удалены в миграции 0020. Структура документов определяется через templates и `target_section_contracts`.
 
 **Хранение:**
@@ -276,6 +344,10 @@
   - `mapped_by` — system/user
 
 ### Шаг 2.6.1: LLM-assist для проблемных секций (опционально)
+
+**Порядок выполнения:** Выполняется автоматически сразу после маппинга секций (Шаг 2.6), если есть проблемные секции
+
+**Примечание:** В коде этот шаг также обозначен как "Шаг 6.1", но следует после маппинга секций (Шаг 2.6). Anchor Alignment тоже обозначен как "Шаг 6.1" в коде, но выполняется раньше — после создания chunks
 
 **Сервис:** `SectionMappingAssistService.assist()`
 
@@ -384,6 +456,8 @@
 
 ### Шаг 2.7: Topic Mapping (только для протоколов)
 
+**Порядок выполнения:** Выполняется после маппинга секций (Шаг 2.6) и LLM-assist (Шаг 2.6.1, если был)
+
 **Сервисы:** `HeadingBlockBuilder`, `TopicMappingService`, `TopicEvidenceBuilder`
 
 **Что происходит:**
@@ -457,22 +531,37 @@
 - Таблица `topic_mapping_runs` (миграция 0014) — отслеживание запусков маппинга топиков
 - Таблица `topic_zone_priors` (миграция 0018) — приоритеты зон по doc_type для топиков
 
-**Примечание:** Topic mapping выполняется только для документов типа `protocol`. При ошибках процесс не прерывается, ошибки добавляются в warnings. Кластеризация опциональна и используется только как prior для маппинга блоков.
+**Примечание:** 
+- Topic mapping выполняется только для документов типа `protocol`
+- При ошибках процесс не прерывается, ошибки добавляются в `warnings_json`
+- Кластеризация опциональна и используется только как prior для маппинга блоков
+- После маппинга блоков автоматически строится `topic_evidence` через `TopicEvidenceBuilder`
+- Метрики topic mapping сохраняются в `summary_json.topics` и `summary_json.clustering` (если кластеризация включена)
 
 ### Шаг 2.8: Quality Gate и финализация
 
 **Сервис:** `QualityGate.evaluate()`
+
+**Порядок выполнения:** Выполняется в конце ингестии, после всех шагов обработки
 
 **Что проверяется:**
 - Обязательные факты (required_facts) из `QualityGate.REQUIRED_FACTS`
 - Метрики ингестии (количество anchors, chunks, фактов, качество маппинга)
 - Наличие SoA для протоколов
 - Качество извлечения фактов
+- Качество маппинга секций (количество mapped vs needs_review)
+- Наличие конфликтов в фактах
 
 **Результат:**
 - `quality_json` — оценка качества ингестии
-- `needs_review` — флаг необходимости ручной проверки
-- `warnings` — предупреждения о потенциальных проблемах
+- `needs_review` — флаг необходимости ручной проверки (устанавливается в `IngestionResult` и `DocumentVersion`)
+- `warnings` — предупреждения о потенциальных проблемах (добавляются в `warnings_json`)
+- Финальные метрики сохраняются в `summary_json`:
+  - `anchors_created`, `chunks_created`
+  - `soa_confidence`, `matched_anchors`, `changed_anchors`
+  - `conflicts_found`, `topics_mapped_count`, `topics_mapped_rate`
+  - `facts_extracted_total`, `facts_validated_count`, `facts_conflicting_count`
+  - `llm_info` (если LLM был использован)
 
 **Хранение:**
 - Таблица `ingestion_runs` (миграция 0013):
@@ -657,19 +746,22 @@ Anchors (конкретные места в документе)
 
 ## 5. Особенности реализации
 
-1. **Идемпотентность:** re-ingest удаляет старые данные и создаёт заново
-2. **Детерминированность:** embeddings через feature hashing (без внешних API)
+1. **Идемпотентность:** re-ingest удаляет старые данные (chunks, anchors, facts) и создаёт заново
+2. **Детерминированность:** embeddings через feature hashing (без внешних API), детерминированные параметры LLM (temperature=0.0)
 3. **Версионность:** каждая версия документа имеет свои anchors/chunks
-4. **Прослеживаемость:** все факты связаны с конкретными местами в документах
-5. **Гибридное извлечение:** rules-first для простых фактов, LLM для сложных (в будущем)
+4. **Прослеживаемость:** все факты связаны с конкретными местами в документах через `fact_evidence` → `anchor_id`
+5. **Гибридное извлечение:** rules-first для простых фактов, LLM для сложных значений (Value Normalizer)
 6. **Метрики и мониторинг:** каждый процесс ингестии отслеживается через `IngestionRun` с метриками и оценкой качества
 7. **Quality Gate:** автоматическая проверка качества ингестии с флагом `needs_review` для проблемных случаев
 8. **Topic Mapping:** автоматическая группировка контента по семантическим топикам через heading blocks (только для протоколов)
-9. **Стабильность anchor_id:** `anchor_id` не зависит от `section_path` и `ordinal` для устойчивости при изменениях структуры документа
+9. **Стабильность anchor_id:** `anchor_id` не зависит от `para_index`, `ordinal` и `doc_version_id` (в хеше) для устойчивости при изменениях структуры документа и правильной работы AnchorAligner
 10. **Структура документов:** определяется через templates и target_section_contracts (таблицы taxonomy удалены в миграции 0020)
-11. **Anchor Alignment:** автоматическое выравнивание якорей между версиями документа для анализа изменений
-12. **Fact Consistency Check:** автоматическая проверка согласованности фактов исследования
-13. **LLM-assist:** опциональное использование LLM для улучшения маппинга проблемных секций
+11. **Anchor Alignment:** автоматическое выравнивание якорей между версиями документа для анализа изменений (только если есть предыдущая версия)
+12. **Fact Consistency Check:** автоматическая проверка согласованности фактов исследования с сохранением конфликтов в таблице `conflicts`
+13. **LLM-assist:** опциональное использование LLM для улучшения маппинга проблемных секций (требует SECURE_MODE=true)
+14. **Graceful degradation:** при ошибках на отдельных шагах (topic mapping, LLM-assist) процесс не прерывается, ошибки добавляются в warnings
+15. **Таймауты:** поддержка таймаута обработки документов (по умолчанию 600 секунд) с проверкой каждые 100 параграфов
+16. **Двухпроходная детекция заголовков:** автоматическое включение visual fallback при недостатке заголовков
 
 ---
 
@@ -681,30 +773,58 @@ Anchors (конкретные места в документе)
 
 **Формат для paragraph-anchors (P/LI/HDR):**
 ```
-{doc_version_id}:{content_type}:{para_index}:{hash(text_norm)}
+{doc_version_id}:{content_type}:{hash16}
+```
+или с суффиксом при дубликатах:
+```
+{doc_version_id}:{content_type}:{hash16}:v{count}
 ```
 
 **Формат для footnotes (FN):**
 ```
-{doc_version_id}:fn:{fn_index}:{fn_para_index}:{hash(text_norm)}
+{doc_version_id}:fn:{hash16}
+```
+или с суффиксом при дубликатах:
+```
+{doc_version_id}:fn:{hash16}:v{count}
+```
+
+**Формат для cell-anchors (CELL):**
+```
+{doc_version_id}:cell:{table_index}:{row_idx}:{col_idx}:{hash16}
 ```
 
 **Примеры:**
 ```
 # Paragraph anchor
-aa0e8400-e29b-41d4-a716-446655440005:p:42:a1b2c3d4e5f6...
+aa0e8400-e29b-41d4-a716-446655440005:p:a1b2c3d4e5f678
+
+# Paragraph anchor с дубликатом
+aa0e8400-e29b-41d4-a716-446655440005:p:a1b2c3d4e5f678:v2
 
 # Footnote anchor
-aa0e8400-e29b-41d4-a716-446655440005:fn:3:1:a1b2c3d4e5f6...
+aa0e8400-e29b-41d4-a716-446655440005:fn:b2c3d4e5f6789012
+
+# Cell anchor
+aa0e8400-e29b-41d4-a716-446655440005:cell:0:5:3:c3d4e5f678901234
 ```
 
 Где:
-- `doc_version_id` — UUID версии документа
+- `doc_version_id` — UUID версии документа (используется только как префикс строки, НЕ попадает в хеш)
 - `content_type` — тип контента (p/li/hdr)
-- `para_index` — порядковый номер параграфа в документе (из location_json)
-- `fn_index` — индекс сноски (только для FN)
-- `fn_para_index` — порядковый номер параграфа внутри сноски (только для FN)
-- `hash(text_norm)` — стабильный хеш нормализованного текста
+- `hash16` — первые 16 символов SHA256 хеша:
+  - Для paragraph-anchors: хеш от `{text_norm}:{section_path[:64]}` (БЕЗ doc_version_id!)
+  - Для footnotes: хеш от `text_norm` (БЕЗ doc_version_id и section_path)
+  - Для cell-anchors: хеш от нормализованного текста ячейки
+- `table_index` — индекс таблицы в документе (только для CELL)
+- `row_idx` — индекс строки в таблице (только для CELL)
+- `col_idx` — индекс столбца в таблице (только для CELL)
+- `:v{count}` — суффикс для устранения коллизий в рамках одной версии (если count > 1)
+
+**ВАЖНО:** 
+- `para_index`, `fn_index`, `fn_para_index` НЕ входят в anchor_id для стабильности при изменениях структуры
+- Хеш вычисляется БЕЗ `doc_version_id` для правильной работы `AnchorAligner` при сравнении версий
+- `section_path` используется в хеше для paragraph-anchors для различения одинаковых абзацев в разных разделах
 
 ### Chunk ID формат
 ```
@@ -712,10 +832,14 @@ aa0e8400-e29b-41d4-a716-446655440005:fn:3:1:a1b2c3d4e5f6...
 ```
 
 ### Section Path
-- `ROOT` — корневой уровень
-- `__FRONTMATTER__` — титульная страница (до первого реального заголовка)
-- `H1/H2/H3` — иерархия заголовков (нормализованная)
-- `FOOTNOTES` — секция сносок
+- `ROOT` — корневой уровень (если нет заголовков)
+- `__FRONTMATTER__` — титульная страница (до первого реального заголовка с style/outline)
+  - Используется для всех параграфов до первого "реального" заголовка
+  - Numbering/visual заголовки до первого реального заголовка не обновляют стек заголовков
+- `H1/H2/H3` — иерархия заголовков (нормализованная через `normalize_section_path()`)
+  - Формат: `"Заголовок 1/Заголовок 2/Заголовок 3"` (нормализованные тексты заголовков)
+  - Каждый уровень — это нормализованный текст заголовка (trim + collapse spaces)
+- `FOOTNOTES` — секция сносок (для всех footnote anchors)
 
 ### Content Types
 - `hdr` — заголовок

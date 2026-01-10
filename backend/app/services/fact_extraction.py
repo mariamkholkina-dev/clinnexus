@@ -42,6 +42,21 @@ class FactExtractionResult:
         self.facts = facts or []
 
 
+def _get_type_category_from_fact_type(fact_type: str) -> str | None:
+    """Определяет type_category на основе fact_type."""
+    category_mapping: dict[str, str] = {
+        "protocol_meta": "metadata",
+        "study": "design",
+        "population": "population",
+        "treatment": "intervention",
+        "intervention": "intervention",
+        "bioequivalence": "bioequivalence",
+        "statistics": "design",
+        "endpoints": "design",
+    }
+    return category_mapping.get(fact_type)
+
+
 class FactExtractionService:
     """Сервис для извлечения и сохранения фактов из документа."""
 
@@ -1238,12 +1253,16 @@ class FactExtractionService:
                 f"новое значение {candidate.value_json} с confidence={candidate.confidence:.2f}"
             )
 
+        # Определяем type_category на основе fact_type
+        type_category = _get_type_category_from_fact_type(fact_type)
+
         if existing:
             existing.value_json = candidate.value_json
             existing.confidence = candidate.confidence
             existing.extractor_version = candidate.extractor_version
             existing.meta_json = meta_json if meta_json else None
             existing.status = status
+            existing.type_category = type_category
             existing.created_from_doc_version_id = doc_version_id
             await self.db.flush()
             return existing
@@ -1257,6 +1276,7 @@ class FactExtractionService:
             extractor_version=candidate.extractor_version,
             meta_json=meta_json if meta_json else None,
             status=status,
+            type_category=type_category,
             created_from_doc_version_id=doc_version_id,
         )
         self.db.add(fact)
